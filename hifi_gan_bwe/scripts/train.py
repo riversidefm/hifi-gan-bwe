@@ -34,9 +34,12 @@ JOINT_ITERATIONS = 100000
 
 
 class Trainer(torch.nn.Module):
-    def __init__(self, args: argparse.Namespace,
-                 train_set,
-                 valid_set,) -> None:
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        train_set,
+        valid_set,
+    ) -> None:
         super().__init__()
 
         # load training, validation, and noise datasets
