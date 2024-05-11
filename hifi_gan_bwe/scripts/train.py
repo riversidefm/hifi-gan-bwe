@@ -34,12 +34,16 @@ JOINT_ITERATIONS = 100000
 
 
 class Trainer(torch.nn.Module):
-    def __init__(self, args: argparse.Namespace) -> None:
+    def __init__(self, args: argparse.Namespace,
+                 train_set,
+                 valid_set,) -> None:
         super().__init__()
 
         # load training, validation, and noise datasets
-        self.train_set = datasets.VCTKDataset(args.vctk_path, training=True)
-        self.valid_set = datasets.VCTKDataset(args.vctk_path, training=False)
+        self.train_set = train_set
+        self.valid_set = valid_set
+        # self.train_set = datasets.VCTKDataset(args.vctk_path, training=True)
+        # self.valid_set = datasets.VCTKDataset(args.vctk_path, training=False)
         noise_set = datasets.DNSDataset(args.noise_path)
         self.train_loader = torch.utils.data.DataLoader(
             self.train_set,
