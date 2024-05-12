@@ -25,7 +25,7 @@ import torch
 import torchaudio
 from matplotlib import pyplot as plt
 from tqdm import tqdm
-
+from torch.utils.data import Dataset
 from hifi_gan_bwe import criteria, datasets, metrics, models
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
@@ -37,8 +37,8 @@ class Trainer(torch.nn.Module):
     def __init__(
         self,
         args: argparse.Namespace,
-        train_set,
-        valid_set,
+        train_set: Dataset,
+        valid_set: Dataset,
     ) -> None:
         super().__init__()
 
