@@ -323,12 +323,16 @@ class Trainer(torch.nn.Module):
 class DatasetType(str, Enum):
     VCTK = "vctk"
     RIVERSIDE = "riverside"
-    
+
+
 class DatasetSplit(str, Enum):
     TRAINING = "training"
     VALIDATION = "validation"
 
-def dataset_loader(dataset_path: str, dataset_type: DatasetType, dataset_split: DatasetSplit):
+
+def dataset_loader(
+    dataset_path: str, dataset_type: DatasetType, dataset_split: DatasetSplit
+):
     if dataset_type == DatasetType.VCTK:
         is_training = dataset_split == DatasetSplit.TRAINING
         return datasets.VCTKDataset(dataset_path, training=is_training)
@@ -337,9 +341,12 @@ def dataset_loader(dataset_path: str, dataset_type: DatasetType, dataset_split: 
             split_path = os.path.join(dataset_path, "train")
         else:
             split_path = os.path.join(dataset_path, "valid")
-        return RiversideAudioDatasetFactory.from_metadata_dir(split_path, num_workers=os.cpu_count()-1)
+        return RiversideAudioDatasetFactory.from_metadata_dir(
+            split_path, num_workers=os.cpu_count() - 1
+        )
     else:
         raise ValueError("Invalid dataset type")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser("HiFi-GAN+ Bandwidth Extension Trainer")
@@ -351,7 +358,7 @@ def main() -> None:
     parser.add_argument(
         "--dataset_path",
         type=Path,
-        default="../../../riverside_datasets/pipelines/audio_metadata/data/",
+        default="../../../riverside_datasets/pipelines/audio_metadata/data/splits",
         help="path to the speech dataset",
     )
     parser.add_argument(
@@ -382,8 +389,16 @@ def main() -> None:
     if git.Repo().is_dirty():
         print("warning: local git repo is dirty")
 
+    # load datasets
+    train_set = dataset_loader(
+        args.dataset_path, args.dataset_type, DatasetSplit.TRAINING
+    )
+    valid_set = dataset_loader(
+        args.dataset_path, args.dataset_type, DatasetSplit.VALIDATION
+    )
+
     # create the model trainer and load the latest checkpoint
-    trainer = Trainer(args).cuda()
+    trainer = Trainer(args, train_set, valid_set).cuda()
     trainer.load()
 
     # smoke test model evaluation before training

@@ -9,6 +9,7 @@ readme = "README.md"
 python = "^3.9"
 torch = "^2.3.0"
 torchaudio = "^2.3.0"
+riverside_datasets = { path = "../riverside_datasets", develop = true }
 
 
 [build-system]
