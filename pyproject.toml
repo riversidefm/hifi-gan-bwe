@@ -9,7 +9,10 @@ readme = "README.md"
 python = "^3.9"
 torch = "^2.3.0"
 torchaudio = "^2.3.0"
-riverside_datasets = { path = "../riverside_datasets", develop = true }
+matplotlib = "^3.8.4"
+tqdm = "^4.66.4"
+python-git = "^2018.2.1"
+gitpython = "^3.1.43"
 
 
 [build-system]
