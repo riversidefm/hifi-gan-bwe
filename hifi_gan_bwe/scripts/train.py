@@ -16,8 +16,11 @@ experiment tracking site.
 """
 
 import argparse
+from enum import Enum
+import os
 import typing as T
 from pathlib import Path
+from uuid import uuid4
 
 import git
 import numpy as np
@@ -27,6 +30,7 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 from torch.utils.data import Dataset
 from hifi_gan_bwe import criteria, datasets, metrics, models
+from riverside_datasets.audio.riverside_audio import RiversideAudioDatasetFactory
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
 WARMUP_ITERATIONS = 100000
@@ -316,17 +320,45 @@ class Trainer(torch.nn.Module):
         self.metrics.save(self.iterations)
 
 
+class DatasetType(str, Enum):
+    VCTK = "vctk"
+    RIVERSIDE = "riverside"
+    
+class DatasetSplit(str, Enum):
+    TRAINING = "training"
+    VALIDATION = "validation"
+
+def dataset_loader(dataset_path: str, dataset_type: DatasetType, dataset_split: DatasetSplit):
+    if dataset_type == DatasetType.VCTK:
+        is_training = dataset_split == DatasetSplit.TRAINING
+        return datasets.VCTKDataset(dataset_path, training=is_training)
+    elif dataset_type == DatasetType.RIVERSIDE:
+        if dataset_split == DatasetSplit.TRAINING:
+            split_path = os.path.join(dataset_path, "train")
+        else:
+            split_path = os.path.join(dataset_path, "valid")
+        return RiversideAudioDatasetFactory.from_metadata_dir(split_path, num_workers=os.cpu_count()-1)
+    else:
+        raise ValueError("Invalid dataset type")
+
 def main() -> None:
     parser = argparse.ArgumentParser("HiFi-GAN+ Bandwidth Extension Trainer")
     parser.add_argument(
         "name",
+        default=f"{str(uuid4())}",
         help="training run name",
     )
     parser.add_argument(
-        "--vctk_path",
+        "--dataset_path",
         type=Path,
-        default="./data/vctk",
-        help="path to the VCTK speech dataset",
+        default="../../../riverside_datasets/pipelines/audio_metadata/data/",
+        help="path to the speech dataset",
+    )
+    parser.add_argument(
+        "--dataset_type",
+        type=DatasetType,
+        default=DatasetType.RIVERSIDE,
+        help="type of speech dataset",
     )
     parser.add_argument(
         "--noise_path",
