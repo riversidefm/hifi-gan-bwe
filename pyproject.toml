@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "hifi-gan-bwe"
+version = "0.1.0"
+description = ""
+authors = ["Eliran Abdoo <eliran@riverside.fm>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+torch = "^2.3.0"
+torchaudio = "^2.3.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
