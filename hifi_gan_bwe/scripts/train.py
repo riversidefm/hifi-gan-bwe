@@ -29,7 +29,13 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 from torch.utils.data import Dataset
 from hifi_gan_bwe import criteria, datasets, metrics, models
-from riverside_datasets.audio.riverside_audio import RiversideAudioDatasetFactory
+from riverside_datasets.audio.audio_repositories.audio_repository import (
+    S3RiversideAudioRepository,
+    S5Facade,
+)
+from riverside_datasets.audio.riverside_audio_dataset import (
+    RiversideAudioDatasetFactory,
+)
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
 WARMUP_ITERATIONS = 100000
@@ -336,12 +342,17 @@ def dataset_loader(
         is_training = dataset_split == DatasetSplit.TRAINING
         return datasets.VCTKDataset(dataset_path, training=is_training)
     elif dataset_type == DatasetType.RIVERSIDE:
+        audio_repository = S3RiversideAudioRepository(
+            s5_facade=S5Facade(region="us-east-1", s5cmd="~/s5cmd"), s3_bucket="riverside-pro-main"
+        )
         if dataset_split == DatasetSplit.TRAINING:
             split_path = os.path.join(dataset_path, "train")
         else:
             split_path = os.path.join(dataset_path, "valid")
         return RiversideAudioDatasetFactory.from_metadata_dir(
-            split_path, num_workers=os.cpu_count() - 1
+            split_path,
+            audio_repository=audio_repository,
+            num_workers=os.cpu_count() - 1,
         )
     else:
         raise ValueError("Invalid dataset type")
@@ -351,13 +362,12 @@ def main() -> None:
     parser = argparse.ArgumentParser("HiFi-GAN+ Bandwidth Extension Trainer")
     parser.add_argument(
         "name",
-        default=f"{str(uuid4())}",
         help="training run name",
     )
     parser.add_argument(
         "--dataset_path",
         type=Path,
-        default="../../../riverside_datasets/pipelines/audio_metadata/data/splits",
+        default="riverside_datasets/pipelines/audio_metadata/data/splits",
         help="path to the speech dataset",
     )
     parser.add_argument(
@@ -383,7 +393,7 @@ def main() -> None:
         action="store_true",
         help="pass to disable Weights and Biases (wandb.ai) logging",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(["test-1"])
 
     if git.Repo().is_dirty():
         print("warning: local git repo is dirty")

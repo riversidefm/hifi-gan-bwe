@@ -13,6 +13,10 @@ matplotlib = "^3.8.4"
 tqdm = "^4.66.4"
 python-git = "^2018.2.1"
 gitpython = "^3.1.43"
+requests = "^2.31.0"
+wandb = "^0.17.0"
+s5cmd-facade-python = {git = "ssh://git@github.com/riversidefm/s5cmd-facade-python.git", tag="v2.0.2"}
+
 
 
 [build-system]
