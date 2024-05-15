@@ -111,7 +111,7 @@ class WavDataset(Dataset):
                     )
 
                 # attach the mmap'd file to a numpy buffer
-                audio = np.frombuffer(data, dtype=np.int16)[22:].copy()
+                audio = np.frombuffer(data[:], dtype=np.int16)[22:]
 
                 # take a subsequence of the file if requested, so that
                 # we don't load the whole file into memory if not needed

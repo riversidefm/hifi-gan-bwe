@@ -33,8 +33,8 @@ from riverside_datasets.audio.riverside_audio_dataset import (
 from hifi_gan_bwe.datasets import WavDataset
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
-WARMUP_ITERATIONS = 10000
-JOINT_ITERATIONS = 10000
+WARMUP_ITERATIONS = 1000
+JOINT_ITERATIONS = 1000
 # WARMUP_ITERATIONS = 100000
 # JOINT_ITERATIONS = 100000
 
