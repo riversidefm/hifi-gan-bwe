@@ -36,6 +36,7 @@ import torch
 import torchaudio
 
 from torch.utils.data import Dataset
+import librosa
 
 A = T.TypeVar("A")
 B = T.TypeVar("B")
@@ -50,6 +51,7 @@ NOISE_SNR_MIN = 15
 NOISE_SNR_MAX = 60
 TRAIN_SPEAKERS = 99
 
+
 class WavDataset(Dataset):
     """pytorch dataset for a collection of WAV files
 
@@ -63,19 +65,26 @@ class WavDataset(Dataset):
     """
 
     def __init__(
-        self, paths: T.Iterator[Path], seq_length: int = SEQ_LENGTH, sample_rate: int = SAMPLE_RATE, allow_resample: bool = True
+        self,
+        paths: T.Iterator[Path],
+        seq_length: int = SEQ_LENGTH,
+        sample_rate: int = SAMPLE_RATE,
     ):
         super().__init__()
 
-        self._paths = [p for p in paths if p.stat().st_size // 2 > seq_length]
+        self._paths = [
+            p
+            for p in paths
+            if p.stat().st_size // 2 > seq_length
+            and librosa.get_samplerate(p) == sample_rate
+        ]
         self._seq_length = seq_length
         self._sample_rate = sample_rate
-        self._allow_resample = allow_resample
 
     @property
     def paths(self) -> T.List[Path]:
         return self._paths.copy()
-    
+
     @property
     @abstractmethod
     def eval_set(self) -> T.List[np.ndarray]:
@@ -92,28 +101,51 @@ class WavDataset(Dataset):
             with mmap.mmap(file.fileno(), length=0, prot=mmap.PROT_READ) as data:
                 assert int.from_bytes(data[22:24], "little") == 1
                 assert int.from_bytes(data[34:36], "little") == 16
-                
+
                 sample_rate = int.from_bytes(data[24:28], "little")
                 matching_sample_rate = sample_rate == self._sample_rate
-                
-                if not matching_sample_rate and not self._allow_resample:
-                    raise ValueError(f"Sample rate mismatch: {self._sample_rate} vs {sample_rate}")            
 
+                if not matching_sample_rate:
+                    raise ValueError(
+                        f"Sample rate mismatch: {self._sample_rate} vs {sample_rate}"
+                    )
 
                 # attach the mmap'd file to a numpy buffer
-                audio = np.frombuffer(data, dtype=np.int16)[22:]
-                
-                if not matching_sample_rate:
-                    audio = torchaudio.transforms.Resample(sample_rate, self._sample_rate)(audio)
+                audio = np.frombuffer(data, dtype=np.int16)[22:].copy()
 
                 # take a subsequence of the file if requested, so that
                 # we don't load the whole file into memory if not needed
                 if seq_length != -1:
-                    offset = np.random.randint(len(audio) - seq_length)
+                    offset = np.random.randint(max(1, len(audio) - seq_length))
                     audio = audio[offset : offset + seq_length]
 
                 # conver the audio from PCM-16 to float32
-                return audio.astype(np.float32) / 32767.0
+                res = audio.astype(np.float32) / 32767.0
+                return res
+
+    def _load(self, index: int, seq_length: int = -1) -> np.ndarray:
+        # load wav using librosa
+        path = self._paths[index]
+        duration_ms = librosa.get_duration(path=path) * 1000
+        seq_length_ms = seq_length / self._sample_rate * 1000
+
+        cut_kwargs = {}
+        if seq_length != -1:
+            offset_ms = np.random.randint(max(1, duration_ms - seq_length_ms))
+            cut_kwargs = {
+                "offset": offset_ms / 1000.0,
+                "duration": seq_length_ms / 1000.0,
+            }
+
+        audio = librosa.load(
+            self._paths[index], sr=self._sample_rate, mono=True, **cut_kwargs
+        )[0]
+
+        if len(cut_kwargs) > 0:
+            audio = audio[:seq_length]
+
+        return audio
+
 
 class VCTKDataset(WavDataset):
     """VCTK speech dataset wrapper"""

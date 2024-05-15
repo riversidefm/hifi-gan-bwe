@@ -33,8 +33,10 @@ from riverside_datasets.audio.riverside_audio_dataset import (
 from hifi_gan_bwe.datasets import WavDataset
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
-WARMUP_ITERATIONS = 100000
-JOINT_ITERATIONS = 100000
+WARMUP_ITERATIONS = 10000
+JOINT_ITERATIONS = 10000
+# WARMUP_ITERATIONS = 100000
+# JOINT_ITERATIONS = 100000
 
 
 class Trainer(torch.nn.Module):
@@ -340,6 +342,7 @@ def dataset_loader(
         return RiversideAudioDatasetFactory.from_directories(
             metadata_dir=metadata_path,
             audio_dir=audio_path,
+            eval_set_seq_length=SAMPLE_RATE * 60
         )
     else:
         raise ValueError("Invalid dataset type")
@@ -410,8 +413,8 @@ def main() -> None:
     trainer.load()
 
     # smoke test model evaluation before training
-    trainer.eval()
-    trainer.evaluate()
+    # trainer.eval()
+    # trainer.evaluate()
     trainer.train()
 
     print(trainer.gen_model)
