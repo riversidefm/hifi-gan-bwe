@@ -17,25 +17,20 @@ experiment tracking site.
 
 import argparse
 from enum import Enum
-import os
 import typing as T
 from pathlib import Path
-from uuid import uuid4
 import git
 import numpy as np
 import torch
 import torchaudio
 from matplotlib import pyplot as plt
 from tqdm import tqdm
-from torch.utils.data import Dataset
 from hifi_gan_bwe import criteria, datasets, metrics, models
-from riverside_datasets.audio.audio_repositories.audio_repository import (
-    S3RiversideAudioRepository,
-    S5Facade,
-)
 from riverside_datasets.audio.riverside_audio_dataset import (
     RiversideAudioDatasetFactory,
 )
+
+from hifi_gan_bwe.datasets import WavDataset
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
 WARMUP_ITERATIONS = 100000
@@ -46,16 +41,14 @@ class Trainer(torch.nn.Module):
     def __init__(
         self,
         args: argparse.Namespace,
-        train_set: Dataset,
-        valid_set: Dataset,
+        train_set: WavDataset,
+        valid_set: WavDataset,
     ) -> None:
         super().__init__()
 
         # load training, validation, and noise datasets
         self.train_set = train_set
         self.valid_set = valid_set
-        # self.train_set = datasets.VCTKDataset(args.vctk_path, training=True)
-        # self.valid_set = datasets.VCTKDataset(args.vctk_path, training=False)
         noise_set = datasets.DNSDataset(args.noise_path)
         self.train_loader = torch.utils.data.DataLoader(
             self.train_set,
@@ -331,28 +324,22 @@ class DatasetType(str, Enum):
 
 
 class DatasetSplit(str, Enum):
-    TRAINING = "training"
-    VALIDATION = "validation"
+    TRAINING = "train"
+    VALIDATION = "valid"
 
 
 def dataset_loader(
-    dataset_path: str, dataset_type: DatasetType, dataset_split: DatasetSplit
+    dataset_type: DatasetType, dataset_split: DatasetSplit, path: Path, audio_path: T.Optional[Path] = None,
 ):
     if dataset_type == DatasetType.VCTK:
         is_training = dataset_split == DatasetSplit.TRAINING
-        return datasets.VCTKDataset(dataset_path, training=is_training)
+        return datasets.VCTKDataset(path, training=is_training)
     elif dataset_type == DatasetType.RIVERSIDE:
-        audio_repository = S3RiversideAudioRepository(
-            s5_facade=S5Facade(region="us-east-1", s5cmd="~/s5cmd"), s3_bucket="riverside-pro-main"
-        )
-        if dataset_split == DatasetSplit.TRAINING:
-            split_path = os.path.join(dataset_path, "train")
-        else:
-            split_path = os.path.join(dataset_path, "valid")
-        return RiversideAudioDatasetFactory.from_metadata_dir(
-            split_path,
-            audio_repository=audio_repository,
-            num_workers=os.cpu_count() - 1,
+        audio_path = audio_path / dataset_split.value
+        metadata_path = path / dataset_split.value
+        return RiversideAudioDatasetFactory.from_directories(
+            metadata_dir=metadata_path,
+            audio_dir=audio_path,
         )
     else:
         raise ValueError("Invalid dataset type")
@@ -367,8 +354,14 @@ def main() -> None:
     parser.add_argument(
         "--dataset_path",
         type=Path,
-        default="riverside_datasets/pipelines/audio_metadata/data/splits",
+        default="../riverside_datasets/pipelines/audio_metadata/data/splits",
         help="path to the speech dataset",
+    )
+    parser.add_argument(
+        "--audio_path",
+        type=Path,
+        default="/data/home/eliran/datasets/riverside-audio",
+        help="external path to the audio",
     )
     parser.add_argument(
         "--dataset_type",
@@ -379,7 +372,7 @@ def main() -> None:
     parser.add_argument(
         "--noise_path",
         type=Path,
-        default="./data/dns",
+        default="/data/home/eliran/datasets/DNS-Challenge/",
         help="path to the DNS noise dataset",
     )
     parser.add_argument(
@@ -400,10 +393,16 @@ def main() -> None:
 
     # load datasets
     train_set = dataset_loader(
-        args.dataset_path, args.dataset_type, DatasetSplit.TRAINING
+        path=args.dataset_path,
+        dataset_type=args.dataset_type,
+        dataset_split=DatasetSplit.TRAINING,
+        audio_path=args.audio_path,
     )
     valid_set = dataset_loader(
-        args.dataset_path, args.dataset_type, DatasetSplit.VALIDATION
+        path=args.dataset_path,
+        dataset_type=args.dataset_type,
+        dataset_split=DatasetSplit.VALIDATION,
+        audio_path=args.audio_path,
     )
 
     # create the model trainer and load the latest checkpoint

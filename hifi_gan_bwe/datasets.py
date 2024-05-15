@@ -25,6 +25,7 @@ https://github.com/microsoft/DNS-Challenge
 
 """
 
+from abc import abstractmethod
 import mmap
 import typing as T
 from collections import defaultdict
@@ -33,6 +34,8 @@ from pathlib import Path
 import numpy as np
 import torch
 import torchaudio
+
+from torch.utils.data import Dataset
 
 A = T.TypeVar("A")
 B = T.TypeVar("B")
@@ -47,8 +50,7 @@ NOISE_SNR_MIN = 15
 NOISE_SNR_MAX = 60
 TRAIN_SPEAKERS = 99
 
-
-class WavDataset(torch.utils.data.Dataset):
+class WavDataset(Dataset):
     """pytorch dataset for a collection of WAV files
 
     This class provides efficient access to random subsequences of a set of
@@ -60,15 +62,24 @@ class WavDataset(torch.utils.data.Dataset):
 
     """
 
-    def __init__(self, paths: T.Iterator[Path], seq_length: int):
+    def __init__(
+        self, paths: T.Iterator[Path], seq_length: int = SEQ_LENGTH, sample_rate: int = SAMPLE_RATE, allow_resample: bool = True
+    ):
         super().__init__()
 
         self._paths = [p for p in paths if p.stat().st_size // 2 > seq_length]
         self._seq_length = seq_length
+        self._sample_rate = sample_rate
+        self._allow_resample = allow_resample
 
     @property
     def paths(self) -> T.List[Path]:
         return self._paths.copy()
+    
+    @property
+    @abstractmethod
+    def eval_set(self) -> T.List[np.ndarray]:
+        pass
 
     def __len__(self) -> int:
         return len(self._paths)
@@ -80,11 +91,20 @@ class WavDataset(torch.utils.data.Dataset):
         with self._paths[index].open("rb") as file:
             with mmap.mmap(file.fileno(), length=0, prot=mmap.PROT_READ) as data:
                 assert int.from_bytes(data[22:24], "little") == 1
-                assert int.from_bytes(data[24:28], "little") == SAMPLE_RATE
                 assert int.from_bytes(data[34:36], "little") == 16
+                
+                sample_rate = int.from_bytes(data[24:28], "little")
+                matching_sample_rate = sample_rate == self._sample_rate
+                
+                if not matching_sample_rate and not self._allow_resample:
+                    raise ValueError(f"Sample rate mismatch: {self._sample_rate} vs {sample_rate}")            
+
 
                 # attach the mmap'd file to a numpy buffer
                 audio = np.frombuffer(data, dtype=np.int16)[22:]
+                
+                if not matching_sample_rate:
+                    audio = torchaudio.transforms.Resample(sample_rate, self._sample_rate)(audio)
 
                 # take a subsequence of the file if requested, so that
                 # we don't load the whole file into memory if not needed
@@ -94,7 +114,6 @@ class WavDataset(torch.utils.data.Dataset):
 
                 # conver the audio from PCM-16 to float32
                 return audio.astype(np.float32) / 32767.0
-
 
 class VCTKDataset(WavDataset):
     """VCTK speech dataset wrapper"""
