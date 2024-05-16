@@ -119,13 +119,13 @@ class WavDataset(Dataset):
                     offset = np.random.randint(max(1, len(audio) - seq_length))
                     audio = audio[offset : offset + seq_length]
 
-                # conver the audio from PCM-16 to float32
-                res = audio.astype(np.float32) / 32767.0
-                return res
+                # convert the audio from PCM-16 to float32
+                audio = audio.astype(np.float32) / 32767.0
+                return audio
 
     def _load(self, index: int, seq_length: int = -1) -> np.ndarray:
         # load wav using librosa
-        path = self._paths[index]
+        path = self._paths[~index]
         duration_ms = librosa.get_duration(path=path) * 1000
         seq_length_ms = seq_length / self._sample_rate * 1000
 

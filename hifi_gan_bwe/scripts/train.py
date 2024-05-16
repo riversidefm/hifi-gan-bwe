@@ -39,6 +39,67 @@ JOINT_ITERATIONS = 1000
 # JOINT_ITERATIONS = 100000
 
 
+class DatasetType(str, Enum):
+    VCTK = "vctk"
+    RIVERSIDE = "riverside"
+
+
+class DatasetSplit(str, Enum):
+    TRAINING = "train"
+    VALIDATION = "valid"
+
+
+def load_dataset(
+    dataset_type: DatasetType,
+    dataset_split: DatasetSplit,
+    path: Path,
+    audio_path: T.Optional[Path] = None,
+):
+    if dataset_type == DatasetType.VCTK:
+        is_training = dataset_split == DatasetSplit.TRAINING
+        return datasets.VCTKDataset(path, training=is_training)
+    elif dataset_type == DatasetType.RIVERSIDE:
+        return RiversideAudioDatasetFactory.from_directories(
+            metadata_dir=path,
+            audio_dir=audio_path,
+            eval_set_seq_length=SAMPLE_RATE * 60,
+        )
+    else:
+        raise ValueError("Invalid dataset type")
+
+
+def load_datasets(
+    train_path: Path,
+    train_type: DatasetType,
+    valid_path: T.Optional[Path],
+    valid_type: DatasetType,
+    audio_path: Path,
+) -> T.Tuple[WavDataset, WavDataset]:
+    if valid_path is None:
+        if valid_type == DatasetType.VCTK:
+            valid_path = train_path
+        elif valid_type == DatasetType.RIVERSIDE:
+            valid_path = train_path.parent / DatasetSplit.VALIDATION.value
+        else:
+            raise ValueError("Invalid dataset type")
+
+    train_set = load_dataset(
+        dataset_type=train_type,
+        dataset_split=DatasetSplit.TRAINING,
+        path=train_path,
+        audio_path=audio_path / DatasetSplit.TRAINING.value,
+    )
+
+    valid_set = load_dataset(
+        dataset_type=valid_type,
+        dataset_split=DatasetSplit.VALIDATION,
+        path=valid_path,
+        audio_path=audio_path / DatasetSplit.VALIDATION.value,
+    )
+
+    return train_set, valid_set
+
+
 class Trainer(torch.nn.Module):
     def __init__(
         self,
@@ -320,34 +381,6 @@ class Trainer(torch.nn.Module):
         self.metrics.save(self.iterations)
 
 
-class DatasetType(str, Enum):
-    VCTK = "vctk"
-    RIVERSIDE = "riverside"
-
-
-class DatasetSplit(str, Enum):
-    TRAINING = "train"
-    VALIDATION = "valid"
-
-
-def dataset_loader(
-    dataset_type: DatasetType, dataset_split: DatasetSplit, path: Path, audio_path: T.Optional[Path] = None,
-):
-    if dataset_type == DatasetType.VCTK:
-        is_training = dataset_split == DatasetSplit.TRAINING
-        return datasets.VCTKDataset(path, training=is_training)
-    elif dataset_type == DatasetType.RIVERSIDE:
-        audio_path = audio_path / dataset_split.value
-        metadata_path = path / dataset_split.value
-        return RiversideAudioDatasetFactory.from_directories(
-            metadata_dir=metadata_path,
-            audio_dir=audio_path,
-            eval_set_seq_length=SAMPLE_RATE * 60
-        )
-    else:
-        raise ValueError("Invalid dataset type")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser("HiFi-GAN+ Bandwidth Extension Trainer")
     parser.add_argument(
@@ -355,22 +388,34 @@ def main() -> None:
         help="training run name",
     )
     parser.add_argument(
-        "--dataset_path",
+        "--train_dataset_path",
         type=Path,
-        default="../riverside_datasets/pipelines/audio_metadata/data/splits",
+        default="../riverside_datasets/pipelines/audio_metadata/data/splits/train",
         help="path to the speech dataset",
+    )
+    parser.add_argument(
+        "--train_dataset_type",
+        type=DatasetType,
+        default=DatasetType.RIVERSIDE,
+        help="type of speech dataset",
+    )
+    parser.add_argument(
+        "--validation_dataset_path",
+        type=Path,
+        default="/data/home/eliran/datasets/VCTK-Corpus",
+        help="path to the validation speech dataset",
+    )
+    parser.add_argument(
+        "--validation_dataset_type",
+        type=DatasetType,
+        default=DatasetType.VCTK,
+        help="type of validation speech dataset",
     )
     parser.add_argument(
         "--audio_path",
         type=Path,
         default="/data/home/eliran/datasets/riverside-audio",
         help="external path to the audio",
-    )
-    parser.add_argument(
-        "--dataset_type",
-        type=DatasetType,
-        default=DatasetType.RIVERSIDE,
-        help="type of speech dataset",
     )
     parser.add_argument(
         "--noise_path",
@@ -395,16 +440,12 @@ def main() -> None:
         print("warning: local git repo is dirty")
 
     # load datasets
-    train_set = dataset_loader(
-        path=args.dataset_path,
-        dataset_type=args.dataset_type,
-        dataset_split=DatasetSplit.TRAINING,
-        audio_path=args.audio_path,
-    )
-    valid_set = dataset_loader(
-        path=args.dataset_path,
-        dataset_type=args.dataset_type,
-        dataset_split=DatasetSplit.VALIDATION,
+
+    train_set, valid_set = load_datasets(
+        train_path=args.train_dataset_path,
+        train_type=args.train_dataset_type,
+        valid_path=args.validation_dataset_path,
+        valid_type=args.validation_dataset_type,
         audio_path=args.audio_path,
     )
 
