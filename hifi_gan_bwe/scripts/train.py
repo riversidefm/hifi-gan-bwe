@@ -454,8 +454,8 @@ def main() -> None:
     trainer.load()
 
     # smoke test model evaluation before training
-    # trainer.eval()
-    # trainer.evaluate()
+    trainer.eval()
+    trainer.evaluate()
     trainer.train()
 
     print(trainer.gen_model)
