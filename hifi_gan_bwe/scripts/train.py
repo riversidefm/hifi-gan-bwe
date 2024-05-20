@@ -415,7 +415,7 @@ def main() -> None:
     parser.add_argument(
         "--log_path",
         type=Path,
-        default="./logs",
+        default="/data/home/eliran/trainings/audio-enhancement/hifi-gan-bwe",
         help="training log root path",
     )
     parser.add_argument(
