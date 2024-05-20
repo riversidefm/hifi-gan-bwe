@@ -33,10 +33,8 @@ from riverside_datasets.audio.riverside_audio_dataset import (
 from hifi_gan_bwe.datasets import WavDataset
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
-WARMUP_ITERATIONS = 1000
-JOINT_ITERATIONS = 1000
-# WARMUP_ITERATIONS = 100000
-# JOINT_ITERATIONS = 100000
+WARMUP_ITERATIONS = 100000
+JOINT_ITERATIONS = 100000
 
 
 class DatasetType(str, Enum):
@@ -423,7 +421,7 @@ def main() -> None:
         action="store_true",
         help="pass to disable Weights and Biases (wandb.ai) logging",
     )
-    args = parser.parse_args(["test-1"])
+    args = parser.parse_args()
 
     if git.Repo().is_dirty():
         print("warning: local git repo is dirty")
