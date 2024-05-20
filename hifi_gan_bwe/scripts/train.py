@@ -17,8 +17,6 @@ experiment tracking site.
 
 import argparse
 from enum import Enum
-import sys
-sys.path.insert(0, "../")
 import typing as T
 from pathlib import Path
 import git
