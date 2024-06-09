@@ -190,18 +190,20 @@ class Preprocessor:
         noise_set: WavDataset,
         training: bool,
         device: str = "cuda",
+        return_original_audio: bool = False,
     ):
         self._device = device
         self._training = training
         self._noise_set = noise_set
+        self._return_original_audio = return_original_audio
 
     def __call__(
         self, batch: T.List[np.ndarray]
     ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # batch the training examples using the default batcher
         # and copy to the GPU, where resampling is much faster
-        y = torch.utils.data.dataloader.default_collate(batch).unsqueeze(1)
-        y = y.to(self._device)
+        orig_y = torch.utils.data.dataloader.default_collate(batch).unsqueeze(1)
+        y = orig_y.to(self._device)
 
         # only augment during training
         if self._training:
@@ -210,6 +212,8 @@ class Preprocessor:
         r = np.random.choice(RESAMPLE_RATES)
         x = torchaudio.functional.resample(y, SAMPLE_RATE, r)
 
+        if self._return_original_audio:
+            return x, r, y, orig_y
         return x, r, y
 
     def _augment(self, y: torch.Tensor) -> torch.Tensor:
