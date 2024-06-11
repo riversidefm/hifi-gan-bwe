@@ -51,6 +51,7 @@ def load_dataset(
     dataset_type: DatasetType,
     dataset_split: DatasetSplit,
     path: Path,
+    seq_length_sec: float,
 ):
     if dataset_type == DatasetType.VCTK:
         is_training = dataset_split == DatasetSplit.TRAINING
@@ -59,6 +60,7 @@ def load_dataset(
         return RiversideAudioDatasetFactory.from_directories(
             manifest_path=path,
             eval_set_seq_length=SAMPLE_RATE * 60,
+            train_set_seq_length_sec=seq_length_sec,
         )
     else:
         raise ValueError("Invalid dataset type")
@@ -69,6 +71,8 @@ def load_datasets(
     train_type: DatasetType,
     valid_path: T.Optional[Path],
     valid_type: DatasetType,
+    train_set_seq_length_sec: float,
+    valid_set_seq_length_sec: float,
 ) -> T.Tuple[WavDataset, WavDataset]:
     if valid_path is None:
         if valid_type == DatasetType.VCTK:
@@ -82,12 +86,14 @@ def load_datasets(
         dataset_type=train_type,
         dataset_split=DatasetSplit.TRAINING,
         path=train_path,
+        seq_length_sec=train_set_seq_length_sec,
     )
 
     valid_set = load_dataset(
         dataset_type=valid_type,
         dataset_split=DatasetSplit.VALIDATION,
         path=valid_path,
+        seq_length_sec=valid_set_seq_length_sec,
     )
 
     return train_set, valid_set
@@ -433,6 +439,8 @@ def main() -> None:
         train_type=args.train_dataset_type,
         valid_path=args.validation_dataset_path,
         valid_type=args.validation_dataset_type,
+        train_set_seq_length_sec=1.0,
+        valid_set_seq_length_sec=-1,
     )
 
     # create the model trainer and load the latest checkpoint
