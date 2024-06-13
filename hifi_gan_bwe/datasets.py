@@ -167,11 +167,11 @@ class VCTKDataset(WavDataset):
 class DNSDataset(WavDataset):
     """DNS Challenge noise dataset wrapper"""
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, seq_length: int = SEQ_LENGTH):
         noise_path = Path(path) / "datasets_fullband" / "noise_fullband"
         super().__init__(
             paths=noise_path.glob("*.wav"),
-            seq_length=BATCH_SIZE * SEQ_LENGTH,
+            seq_length=BATCH_SIZE * seq_length,
         )
 
 
@@ -234,7 +234,7 @@ class Preprocessor:
         # load a noise sample
         noise_index = np.random.randint(len(self._noise_set))
         noise = torch.from_numpy(self._noise_set[noise_index]).to(y.device)
-        noise = noise.reshape([BATCH_SIZE, 1, SEQ_LENGTH])
+        noise = noise.reshape([BATCH_SIZE, 1, -1])
         noise_rms = torch.sqrt((noise**2).mean(-1, keepdim=True))
 
         # compute a random SNR, adjust the noise gain to match it,

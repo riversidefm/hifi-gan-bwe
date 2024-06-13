@@ -43,7 +43,7 @@ def main(config: Config):
     ]:
         os.makedirs(p, exist_ok=False)
 
-    noise_set = datasets.DNSDataset(config.noise_path)
+    noise_set = datasets.DNSDataset(config.noise_path, seq_length=int(config.seq_length_sec * config.sample_rate))
     data_set = load_dataset(
         dataset_type=config.dataset_type,
         dataset_split=config.dataset_split,
