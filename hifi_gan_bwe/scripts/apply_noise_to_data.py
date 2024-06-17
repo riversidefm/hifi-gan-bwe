@@ -49,6 +49,7 @@ def main(config: Config):
         dataset_split=config.dataset_split,
         path=config.dataset_path,
         seq_length_sec=config.seq_length_sec,
+        eval_set_seq_length=config.seq_length_sec,  # eval set is unused when generating noise
     )
     loader = torch.utils.data.DataLoader(
         data_set,

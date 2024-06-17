@@ -25,7 +25,7 @@ https://github.com/microsoft/DNS-Challenge
 
 """
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import mmap
 import typing as T
 from collections import defaultdict
@@ -33,6 +33,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from riverside_datasets.audio.riverside_audio_dataset import RiversideAudioDataset
 import torchaudio
 
 from torch.utils.data import Dataset
@@ -84,11 +85,6 @@ class WavDataset(Dataset):
     @property
     def paths(self) -> T.List[Path]:
         return self._paths.copy()
-
-    @property
-    @abstractmethod
-    def eval_set(self) -> T.List[np.ndarray]:
-        pass
 
     def __len__(self) -> int:
         return len(self._paths)
@@ -146,22 +142,39 @@ class WavDataset(Dataset):
 
         return audio
 
+class BWEDataset(WavDataset, ABC):
+    def __init__(self, eval_set_seq_length: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.eval_set_seq_length = eval_set_seq_length
+    
+    @property
+    @abstractmethod
+    def eval_paths(self) -> T.List[Path]:
+        pass
+    
+    @property
+    def eval_set(self) -> T.List[np.ndarray]:
+        return [self.load(self.paths.index(p), self.eval_set_seq_length) for p in self.eval_paths]
+    
 
-class VCTKDataset(WavDataset):
+class VCTKDataset(BWEDataset):
     """VCTK speech dataset wrapper"""
 
-    def __init__(self, path: str, training: bool):
+    def __init__(self, path: str, training: bool, eval_set_seq_length: int):
+        if eval_set_seq_length != -1:
+            raise ValueError("currently VCTK does not support eval set sequence length")
         paths = sorted((Path(path) / "wav48").glob("*"))
         paths = paths[:TRAIN_SPEAKERS] if training else paths[TRAIN_SPEAKERS:]
         super().__init__(
             paths=(p for s in paths for p in s.glob("*.wav")),
             seq_length=SEQ_LENGTH,
+            eval_set_seq_length=eval_set_seq_length
         )
-
+    
     @property
-    def eval_set(self) -> T.List[np.ndarray]:
+    def eval_paths(self) -> T.List[Path]:
         speaker_paths = group_by(self.paths, lambda p: p.parent.name)
-        return [self.load(self.paths.index(p[0])) for p in speaker_paths.values()]
+        return [p[0] for p in speaker_paths.values()]    
 
 
 class DNSDataset(WavDataset):

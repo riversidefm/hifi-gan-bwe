@@ -22,6 +22,7 @@ from pathlib import Path
 import git
 import numpy as np
 import torch
+from hifi_gan_bwe_common.hifi_gan_bwe.dataset_converters import bwe_dataset_from_riverside_audio_dataset
 import torchaudio
 from matplotlib import pyplot as plt
 from tqdm import tqdm
@@ -30,7 +31,7 @@ from riverside_datasets.audio.riverside_audio_dataset import (
     RiversideAudioDatasetFactory,
 )
 
-from hifi_gan_bwe.datasets import WavDataset
+from hifi_gan_bwe.datasets import BWEDataset, WavDataset
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
 WARMUP_ITERATIONS = 100000
@@ -52,16 +53,17 @@ def load_dataset(
     dataset_split: DatasetSplit,
     path: Path,
     seq_length_sec: float,
-):
+    eval_set_seq_length: float = -1,
+) -> BWEDataset:
     if dataset_type == DatasetType.VCTK:
         is_training = dataset_split == DatasetSplit.TRAINING
-        return datasets.VCTKDataset(path, training=is_training)
+        return datasets.VCTKDataset(path, training=is_training, eval_set_seq_length=eval_set_seq_length)
     elif dataset_type == DatasetType.RIVERSIDE:
-        return RiversideAudioDatasetFactory.from_directories(
+        riverside_dataset = RiversideAudioDatasetFactory.from_directories(
             manifest_path=path,
-            eval_set_seq_length=SAMPLE_RATE * 60,
-            train_set_seq_length_sec=seq_length_sec,
+            seq_length_sec=seq_length_sec,
         )
+        return bwe_dataset_from_riverside_audio_dataset(riverside_dataset, eval_set_seq_length=eval_set_seq_length)
     else:
         raise ValueError("Invalid dataset type")
 
