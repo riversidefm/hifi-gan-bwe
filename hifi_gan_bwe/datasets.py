@@ -33,7 +33,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from riverside_datasets.audio.riverside_audio_dataset import RiversideAudioDataset
 import torchaudio
 
 from torch.utils.data import Dataset
