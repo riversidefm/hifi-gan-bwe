@@ -33,7 +33,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torchaudio
 
 from torch.utils.data import Dataset
 import librosa
@@ -67,8 +66,8 @@ class WavDataset(Dataset):
     def __init__(
         self,
         paths: T.Iterator[Path],
-        seq_length: int = SEQ_LENGTH,
-        sample_rate: int = SAMPLE_RATE,
+        seq_length: int,
+        sample_rate: int,
     ):
         super().__init__()
 
@@ -179,11 +178,12 @@ class VCTKDataset(BWEDataset):
 class DNSDataset(WavDataset):
     """DNS Challenge noise dataset wrapper"""
 
-    def __init__(self, path: str, seq_length: int = SEQ_LENGTH):
+    def __init__(self, path: str, seq_length: int):
         noise_path = Path(path) / "datasets_fullband" / "noise_fullband"
         super().__init__(
             paths=noise_path.glob("*.wav"),
-            seq_length=BATCH_SIZE * seq_length,
+            seq_length=seq_length,
+            sample_rate=SAMPLE_RATE,  # all noise samples are 48kHz
         )
 
 
@@ -200,6 +200,7 @@ class Preprocessor:
     def __init__(
         self,
         noise_set: WavDataset,
+        target_sample_rate: int,
         training: bool,
         device: str = "cuda",
         return_original_audio: bool = False,
@@ -208,6 +209,7 @@ class Preprocessor:
         self._training = training
         self._noise_set = noise_set
         self._return_original_audio = return_original_audio
+        self._target_sample_rate = target_sample_rate
 
     def __call__(
         self, batch: T.List[np.ndarray]
@@ -221,21 +223,22 @@ class Preprocessor:
         if self._training:
             y = self._augment(y)
 
-        r = np.random.choice(RESAMPLE_RATES)
-        x = torchaudio.functional.resample(y, SAMPLE_RATE, r)
+        # r = np.random.choice(RESAMPLE_RATES)
+        # x = torchaudio.functional.resample(y, SAMPLE_RATE, r)
 
         if self._return_original_audio:
             return x, r, y, orig_y
         return x, r, y
 
     def _augment(self, y: torch.Tensor) -> torch.Tensor:
+        batch_size = y.shape[0]
         # perform random amplitude augmentation
         signal_rms = torch.sqrt((y**2).mean(-1, keepdim=True))
         target_rms = torch.from_numpy(
             np.random.uniform(
                 SIGNAL_RMS_MIN,
                 SIGNAL_RMS_MAX,
-                size=[BATCH_SIZE, 1, 1],
+                size=[batch_size, 1, 1],
             )
         ).to(y.device)
         target_rms = 10 ** (target_rms / 20)
@@ -244,9 +247,10 @@ class Preprocessor:
         signal_rms *= gain
 
         # load a noise sample
-        noise_index = np.random.randint(len(self._noise_set))
-        noise = torch.from_numpy(self._noise_set[noise_index]).to(y.device)
-        noise = noise.reshape([BATCH_SIZE, 1, -1])
+        noise_indexes = np.random.randint(len(self._noise_set), size=batch_size)
+        noise = torch.from_numpy(self._noise_set[noise_indexes]).to(y.device)
+        noise = librosa.resample(noise, self._noise_set._sample_rate, self._target_sample_rate)
+        noise = noise.reshape([batch_size, 1, -1])
         noise_rms = torch.sqrt((noise**2).mean(-1, keepdim=True))
 
         # compute a random SNR, adjust the noise gain to match it,
@@ -256,7 +260,7 @@ class Preprocessor:
             np.random.uniform(
                 NOISE_SNR_MIN,
                 NOISE_SNR_MAX,
-                size=[BATCH_SIZE, 1, 1],
+                size=[batch_size, 1, 1],
             )
         ).to(y.device)
         target_snr = 10 ** (target_snr / 20)
