@@ -36,6 +36,7 @@ import torch
 
 from torch.utils.data import Dataset
 import librosa
+import torchaudio
 
 A = T.TypeVar("A")
 B = T.TypeVar("B")
@@ -178,12 +179,13 @@ class VCTKDataset(BWEDataset):
 class DNSDataset(WavDataset):
     """DNS Challenge noise dataset wrapper"""
 
-    def __init__(self, path: str, seq_length: int):
+    def __init__(self, path: str, seq_length_sec: int, sample_rate: int = SAMPLE_RATE):
         noise_path = Path(path) / "datasets_fullband" / "noise_fullband"
+        seq_length = int(seq_length_sec * sample_rate)
         super().__init__(
             paths=noise_path.glob("*.wav"),
             seq_length=seq_length,
-            sample_rate=SAMPLE_RATE,  # all noise samples are 48kHz
+            sample_rate=sample_rate,
         )
 
 
@@ -223,8 +225,10 @@ class Preprocessor:
         if self._training:
             y = self._augment(y)
 
-        # r = np.random.choice(RESAMPLE_RATES)
-        # x = torchaudio.functional.resample(y, SAMPLE_RATE, r)
+        return y
+        
+        r = np.random.choice(RESAMPLE_RATES)
+        x = torchaudio.functional.resample(y, SAMPLE_RATE, r)
 
         if self._return_original_audio:
             return x, r, y, orig_y
@@ -248,8 +252,9 @@ class Preprocessor:
 
         # load a noise sample
         noise_indexes = np.random.randint(len(self._noise_set), size=batch_size)
-        noise = torch.from_numpy(self._noise_set[noise_indexes]).to(y.device)
-        noise = librosa.resample(noise, self._noise_set._sample_rate, self._target_sample_rate)
+        noise = np.array([self._noise_set[noise_index] for noise_index in noise_indexes])
+        noise = librosa.resample(noise, orig_sr=self._noise_set._sample_rate, target_sr=self._target_sample_rate, axis=-1)
+        noise = torch.from_numpy(noise).to(y.device)
         noise = noise.reshape([batch_size, 1, -1])
         noise_rms = torch.sqrt((noise**2).mean(-1, keepdim=True))
 
