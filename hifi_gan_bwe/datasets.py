@@ -214,7 +214,9 @@ class Preprocessor:
         self._target_sample_rate = target_sample_rate
 
     def __call__(
-        self, batch: T.List[np.ndarray]
+        self, 
+        batch: T.List[np.ndarray],
+        return_only_noisy_audio: bool = False,
     ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # batch the training examples using the default batcher
         # and copy to the GPU, where resampling is much faster
@@ -224,9 +226,8 @@ class Preprocessor:
         # only augment during training
         if self._training:
             y = self._augment(y)
-
-        return y
-        
+            if return_only_noisy_audio:
+                return y
         r = np.random.choice(RESAMPLE_RATES)
         x = torchaudio.functional.resample(y, SAMPLE_RATE, r)
 
