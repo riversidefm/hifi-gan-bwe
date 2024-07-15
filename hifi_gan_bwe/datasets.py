@@ -141,20 +141,24 @@ class WavDataset(Dataset):
 
         return audio
 
+
 class BWEDataset(WavDataset, ABC):
     def __init__(self, eval_set_seq_length: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.eval_set_seq_length = eval_set_seq_length
-    
+
     @property
     @abstractmethod
     def eval_paths(self) -> T.List[Path]:
         pass
-    
+
     @property
     def eval_set(self) -> T.List[np.ndarray]:
-        return [self.load(self.paths.index(p), self.eval_set_seq_length) for p in self.eval_paths]
-    
+        return [
+            self.load(self.paths.index(p), self.eval_set_seq_length)
+            for p in self.eval_paths
+        ]
+
 
 class VCTKDataset(BWEDataset):
     """VCTK speech dataset wrapper"""
@@ -167,13 +171,13 @@ class VCTKDataset(BWEDataset):
         super().__init__(
             paths=(p for s in paths for p in s.glob("*.wav")),
             seq_length=SEQ_LENGTH,
-            eval_set_seq_length=eval_set_seq_length
+            eval_set_seq_length=eval_set_seq_length,
         )
-    
+
     @property
     def eval_paths(self) -> T.List[Path]:
         speaker_paths = group_by(self.paths, lambda p: p.parent.name)
-        return [p[0] for p in speaker_paths.values()]    
+        return [p[0] for p in speaker_paths.values()]
 
 
 class DNSDataset(WavDataset):
@@ -206,15 +210,17 @@ class Preprocessor:
         training: bool,
         device: str = "cuda",
         return_original_audio: bool = False,
+        diverse_noises: bool = False,
     ):
         self._device = device
         self._training = training
         self._noise_set = noise_set
         self._return_original_audio = return_original_audio
         self._target_sample_rate = target_sample_rate
+        self._diverse_noises = diverse_noises
 
     def __call__(
-        self, 
+        self,
         batch: T.List[np.ndarray],
         return_only_noisy_audio: bool = False,
     ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -252,13 +258,37 @@ class Preprocessor:
         signal_rms *= gain
 
         # load a noise sample
-        noise_indexes = np.random.randint(len(self._noise_set), size=batch_size)
-        noise = np.array([self._noise_set[noise_index] for noise_index in noise_indexes])
-        noise = librosa.resample(noise, orig_sr=self._noise_set._sample_rate, target_sr=self._target_sample_rate, axis=-1)
-        noise = torch.from_numpy(noise).to(y.device)
+        if self._diverse_noises:
+            noise_indices = [
+                np.random.randint(len(self._noise_set)) for _ in range(batch_size)
+            ]
+            noise = [
+                np.resize(
+                    librosa.resample(
+                        self._noise_set[noise_index],
+                        orig_sr=self._noise_set._sample_rate,
+                        target_sr=self._target_sample_rate,
+                        axis=-1,
+                    ),
+                    (1, y.shape[-1]),
+                )
+                for noise_index in noise_indices
+            ]
+        else:
+            noise_index = np.random.randint(len(self._noise_set))
+            noise = np.resize(
+                librosa.resample(
+                    self._noise_set[noise_index],
+                    orig_sr=self._noise_set._sample_rate,
+                    target_sr=self._target_sample_rate,
+                    axis=-1,
+                ),
+                (1, y.shape[-1] * batch_size),
+            )
+
+        noise = torch.from_numpy(np.array(noise)).to(y.device)
         noise = noise.reshape([batch_size, 1, -1])
         noise_rms = torch.sqrt((noise**2).mean(-1, keepdim=True))
-
         # compute a random SNR, adjust the noise gain to match it,
         # and mix the noise with the audio
         source_snr = signal_rms / (noise_rms + 1e-5)
