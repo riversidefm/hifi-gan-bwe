@@ -183,11 +183,11 @@ class VCTKDataset(BWEDataset):
 class DNSDataset(WavDataset):
     """DNS Challenge noise dataset wrapper"""
 
-    def __init__(self, path: str, seq_length_sec: int, sample_rate: int = SAMPLE_RATE):
+    def __init__(self, path: str, seq_length_sec: int, sample_rate: int = SAMPLE_RATE, num_samples: T.Optional[int] = None):
         noise_path = Path(path) / "datasets_fullband" / "noise_fullband"
         seq_length = int(seq_length_sec * sample_rate)
         super().__init__(
-            paths=noise_path.glob("*.wav"),
+            paths=list(noise_path.glob("*.wav"))[:num_samples],
             seq_length=seq_length,
             sample_rate=sample_rate,
         )
