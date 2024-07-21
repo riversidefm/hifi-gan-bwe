@@ -69,13 +69,14 @@ class WavDataset(Dataset):
         paths: T.Iterator[Path],
         seq_length: int,
         sample_rate: int,
+        min_duration_samples: int = 0,
     ):
         super().__init__()
 
         self._paths = [
             p
             for p in paths
-            if p.stat().st_size // 2 > seq_length
+            if (p.stat().st_size // 2) > max(seq_length, min_duration_samples)
             and librosa.get_samplerate(p) == sample_rate
         ]
         self._seq_length = seq_length
