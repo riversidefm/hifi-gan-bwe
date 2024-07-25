@@ -184,7 +184,13 @@ class VCTKDataset(BWEDataset):
 class DNSDataset(WavDataset):
     """DNS Challenge noise dataset wrapper"""
 
-    def __init__(self, path: str, seq_length_sec: int, sample_rate: int = SAMPLE_RATE, num_samples: T.Optional[int] = None):
+    def __init__(
+        self,
+        path: str,
+        seq_length_sec: int,
+        sample_rate: int = SAMPLE_RATE,
+        num_samples: T.Optional[int] = None,
+    ):
         noise_path = Path(path) / "datasets_fullband" / "noise_fullband"
         seq_length = int(seq_length_sec * sample_rate)
         super().__init__(
@@ -201,7 +207,8 @@ class Preprocessor:
         noise_set: noise dataset, used for augmentation during training
         training: True for training, False for inference
         device: the pytorch device to load batches onto
-
+        diverse_noises: whether to use a different noise sample for each batch. otherwise will try to split a single noise sample among the batch samples (original behavior)
+        perform_amplitude_augmentation: whether to perform random amplitude augmentation to the audio, according to noise_snr min and max
     """
 
     def __init__(
@@ -212,6 +219,11 @@ class Preprocessor:
         device: str = "cuda",
         return_original_audio: bool = False,
         diverse_noises: bool = False,
+        signal_rms_min: float = SIGNAL_RMS_MIN,
+        signal_rms_max: float = SIGNAL_RMS_MAX,
+        noise_snr_min: float = NOISE_SNR_MIN,
+        noise_snr_max: float = NOISE_SNR_MAX,
+        perform_amplitude_augmentation: bool = True,
     ):
         self._device = device
         self._training = training
@@ -219,6 +231,11 @@ class Preprocessor:
         self._return_original_audio = return_original_audio
         self._target_sample_rate = target_sample_rate
         self._diverse_noises = diverse_noises
+        self._signal_rms_min = signal_rms_min
+        self._signal_rms_max = signal_rms_max
+        self._noise_snr_min = noise_snr_min
+        self._noise_snr_max = noise_snr_max
+        self._perform_amplitude_augmentation = perform_amplitude_augmentation
 
     def __call__(
         self,
@@ -243,20 +260,22 @@ class Preprocessor:
         return x, r, y
 
     def _augment(self, y: torch.Tensor) -> torch.Tensor:
-        batch_size = y.shape[0]
-        # perform random amplitude augmentation
         signal_rms = torch.sqrt((y**2).mean(-1, keepdim=True))
-        target_rms = torch.from_numpy(
-            np.random.uniform(
-                SIGNAL_RMS_MIN,
-                SIGNAL_RMS_MAX,
-                size=[batch_size, 1, 1],
-            )
-        ).to(y.device)
-        target_rms = 10 ** (target_rms / 20)
-        gain = target_rms / (signal_rms + 1e-5)
-        y *= gain
-        signal_rms *= gain
+
+        if self._perform_amplitude_augmentation:
+            batch_size = y.shape[0]
+            # perform random amplitude augmentation
+            target_rms = torch.from_numpy(
+                np.random.uniform(
+                    self._signal_rms_min,
+                    self._signal_rms_max,
+                    size=[batch_size, 1, 1],
+                )
+            ).to(y.device)
+            target_rms = 10 ** (target_rms / 20)
+            gain = target_rms / (signal_rms + 1e-5)
+            y *= gain
+            signal_rms *= gain
 
         # load a noise sample
         if self._diverse_noises:
@@ -295,8 +314,8 @@ class Preprocessor:
         source_snr = signal_rms / (noise_rms + 1e-5)
         target_snr = torch.from_numpy(
             np.random.uniform(
-                NOISE_SNR_MIN,
-                NOISE_SNR_MAX,
+                self._noise_snr_min,
+                self._noise_snr_max,
                 size=[batch_size, 1, 1],
             )
         ).to(y.device)
