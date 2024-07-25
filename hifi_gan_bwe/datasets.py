@@ -260,10 +260,10 @@ class Preprocessor:
         return x, r, y
 
     def _augment(self, y: torch.Tensor) -> torch.Tensor:
+        batch_size = y.shape[0]
         signal_rms = torch.sqrt((y**2).mean(-1, keepdim=True))
 
         if self._perform_amplitude_augmentation:
-            batch_size = y.shape[0]
             # perform random amplitude augmentation
             target_rms = torch.from_numpy(
                 np.random.uniform(
