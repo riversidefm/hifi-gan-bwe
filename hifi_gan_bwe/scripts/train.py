@@ -415,7 +415,7 @@ def main() -> None:
     parser.add_argument(
         "--noise_path",
         type=Path,
-        default="/data/home/eliran/datasets/DNS-Challenge/",
+        default="/data/projects/audio-enhancement/datasets/DNS-Challenge/",
         help="path to the DNS noise dataset",
     )
     parser.add_argument(

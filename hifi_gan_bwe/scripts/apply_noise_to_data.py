@@ -18,7 +18,7 @@ class Config(BaseModel):
     num_epochs: int = 5
     seq_length_sec: float = 2.0  # interval sizes to cut from the audio files
 
-    noise_path: str = "/data/home/eliran/datasets/DNS-Challenge/"
+    noise_path: str = "/data/projects/audio-enhancement/datasets/DNS-Challenge/"
     dataset_path: str = (
         "/data/home/eliran/datasets/riverside-audio/vad-wavs/train/manifest.json"
     )
@@ -26,7 +26,7 @@ class Config(BaseModel):
     dataset_split: DatasetSplit = DatasetSplit.TRAINING
 
     dataset_tgt_path: str = (
-        "/data/home/projects/audio-enhancement/mp-senet/clean-noisy-pairings/riverside-5epochs-2sec"
+        "/data/projects/audio-enhancement/mp-senet/clean-noisy-pairings/riverside-5epochs-2sec"
     )
 
 
