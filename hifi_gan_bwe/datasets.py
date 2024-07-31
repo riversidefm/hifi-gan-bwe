@@ -70,6 +70,7 @@ class WavDataset(Dataset):
         seq_length: int,
         sample_rate: int,
         min_duration_samples: int = 0,
+        allow_invalid_samples_as_none: bool = False
     ):
         super().__init__()
 
@@ -81,6 +82,7 @@ class WavDataset(Dataset):
         ]
         self._seq_length = seq_length
         self._sample_rate = sample_rate
+        self._allow_invalid_samples_as_none = allow_invalid_samples_as_none
 
     @property
     def paths(self) -> T.List[Path]:
@@ -89,8 +91,13 @@ class WavDataset(Dataset):
     def __len__(self) -> int:
         return len(self._paths)
 
-    def __getitem__(self, index: int) -> np.ndarray:
-        return self.load(index, seq_length=self._seq_length)
+    def __getitem__(self, index: int) -> T.Optional[np.ndarray]:
+        try:
+            return self.load(index, seq_length=self._seq_length)
+        except Exception as e:
+            if self._allow_invalid_samples_as_none:
+                return None
+            raise e
 
     def load(self, index: int, seq_length: int = -1) -> np.ndarray:
         with self._paths[index].open("rb") as file:
