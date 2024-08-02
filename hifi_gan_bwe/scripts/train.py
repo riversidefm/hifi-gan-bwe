@@ -22,7 +22,9 @@ from pathlib import Path
 import git
 import numpy as np
 import torch
-from hifi_gan_bwe_common.hifi_gan_bwe.dataset_converters import bwe_dataset_from_riverside_audio_dataset
+from hifi_gan_bwe_common.hifi_gan_bwe.dataset_converters import (
+    bwe_dataset_from_riverside_audio_dataset,
+)
 import torchaudio
 from matplotlib import pyplot as plt
 from tqdm import tqdm
@@ -54,16 +56,21 @@ def load_dataset(
     path: Path,
     seq_length_sec: float,
     eval_set_seq_length: float = -1,
+    
 ) -> BWEDataset:
     if dataset_type == DatasetType.VCTK:
         is_training = dataset_split == DatasetSplit.TRAINING
-        return datasets.VCTKDataset(path, training=is_training, eval_set_seq_length=eval_set_seq_length)
+        return datasets.VCTKDataset(
+            path, training=is_training, eval_set_seq_length=eval_set_seq_length
+        )
     elif dataset_type == DatasetType.RIVERSIDE:
         riverside_dataset = RiversideAudioDatasetFactory.from_directories(
             manifest_path=path,
             seq_length_sec=seq_length_sec,
         )
-        return bwe_dataset_from_riverside_audio_dataset(riverside_dataset, eval_set_seq_length=eval_set_seq_length)
+        return bwe_dataset_from_riverside_audio_dataset(
+            riverside_dataset, eval_set_seq_length=eval_set_seq_length
+        )
     else:
         raise ValueError("Invalid dataset type")
 
@@ -113,7 +120,10 @@ class Trainer(torch.nn.Module):
         # load training, validation, and noise datasets
         self.train_set = train_set
         self.valid_set = valid_set
-        noise_set = datasets.DNSDataset(args.noise_path)
+        noise_set = datasets.DNSDataset(
+            args.noise_path,
+            seq_length_sec=datasets.BATCH_SIZE * datasets.SEQ_LENGTH_SEC,
+        )
         self.train_loader = torch.utils.data.DataLoader(
             self.train_set,
             collate_fn=datasets.Preprocessor(noise_set=noise_set, training=True),
@@ -391,7 +401,7 @@ def main() -> None:
     parser.add_argument(
         "--train_dataset_path",
         type=Path,
-        default="/data/home/eliran/datasets/riverside-audio/vad-wavs/train/manifest.json",
+        default="/data/projects/audio-enhancement/datasets/riverside-high-quality-vad-segments/train/manifest.json",
         help="path to the speech dataset",
     )
     parser.add_argument(
@@ -403,7 +413,7 @@ def main() -> None:
     parser.add_argument(
         "--validation_dataset_path",
         type=Path,
-        default="/data/home/eliran/datasets/VCTK-Corpus",
+        default="/data/projects/audio-enhancement/datasets/VCTK-Corpus",
         help="path to the validation speech dataset",
     )
     parser.add_argument(
@@ -421,7 +431,7 @@ def main() -> None:
     parser.add_argument(
         "--log_path",
         type=Path,
-        default="/data/home/eliran/trainings/audio-enhancement/hifi-gan-bwe",
+        default="/data/projects/audio-enhancement/hifi-gan-bwe/checkpoints",
         help="training log root path",
     )
     parser.add_argument(
@@ -441,8 +451,8 @@ def main() -> None:
         train_type=args.train_dataset_type,
         valid_path=args.validation_dataset_path,
         valid_type=args.validation_dataset_type,
-        train_set_seq_length_sec=1.0,
-        valid_set_seq_length_sec=-1,
+        train_set_seq_length_sec=datasets.SEQ_LENGTH_SEC,
+        valid_set_seq_length_sec=datasets.SEQ_LENGTH_SEC,
     )
 
     # create the model trainer and load the latest checkpoint

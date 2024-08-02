@@ -45,6 +45,7 @@ SAMPLE_RATE = 48000
 RESAMPLE_RATES = [8000, 16000, 24000]
 BATCH_SIZE = 4
 SEQ_LENGTH = int(1.0 * SAMPLE_RATE)
+SEQ_LENGTH_SEC = SEQ_LENGTH / SAMPLE_RATE
 SIGNAL_RMS_MIN = -30
 SIGNAL_RMS_MAX = -12
 NOISE_SNR_MIN = 15
@@ -180,6 +181,7 @@ class VCTKDataset(BWEDataset):
             paths=(p for s in paths for p in s.glob("*.wav")),
             seq_length=SEQ_LENGTH,
             eval_set_seq_length=eval_set_seq_length,
+            sample_rate=SAMPLE_RATE,
         )
 
     @property
@@ -221,9 +223,9 @@ class Preprocessor:
     def __init__(
         self,
         noise_set: WavDataset,
-        target_sample_rate: int,
         training: bool,
         device: str = "cuda",
+        target_sample_rate: int = SAMPLE_RATE,
         return_original_audio: bool = False,
         diverse_noises: bool = False,
         signal_rms_min: float = SIGNAL_RMS_MIN,
