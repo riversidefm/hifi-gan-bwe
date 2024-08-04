@@ -165,7 +165,10 @@ class WavDataset(Dataset):
         }
         self._paths = []
         for p in paths:
-            sr = librosa.get_samplerate(p)
+            try:
+                sr = librosa.get_samplerate(p)
+            except Exception:
+                continue
             if sr not in self._allowed_sample_rates:
                 continue
 
