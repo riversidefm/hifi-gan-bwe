@@ -16,6 +16,7 @@ gitpython = "^3.1.43"
 requests = "^2.31.0"
 wandb = "^0.17.0"
 s5cmd-facade-python = {git = "ssh://git@github.com/riversidefm/s5cmd-facade-python.git", tag="v2.0.2"}
+librosa = "^0.10.2.post1"
 
 
 
