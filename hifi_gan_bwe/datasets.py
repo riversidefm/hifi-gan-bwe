@@ -26,6 +26,8 @@ https://github.com/microsoft/DNS-Challenge
 """
 
 from abc import ABC, abstractmethod
+from enum import Enum
+from functools import lru_cache
 import mmap
 import typing as T
 from collections import defaultdict
@@ -53,7 +55,59 @@ NOISE_SNR_MAX = 60
 TRAIN_SPEAKERS = 99
 
 
-    
+class _SR(int, Enum):
+    SR_44_1K = 44100
+    SR_48K = 48000
+
+
+class _SampleWidth(int, Enum):
+    SW_16 = 16
+    SW_32 = 32
+
+
+def _get_seq_from_buffer(
+    buffer: mmap.mmap, seq_length: int, sample_width: _SampleWidth
+) -> np.ndarray:
+    if sample_width == _SampleWidth.SW_16:
+        dtype = np.int16
+    elif sample_width == _SampleWidth.SW_32:
+        dtype = np.int32
+    else:
+        raise ValueError(f"Unsupported sample width: {sample_width}")
+
+    # attach the mmap'd file to a numpy buffer
+    buffer = np.frombuffer(buffer[:], dtype=dtype)[22:]
+
+    # take a subsequence of the file if requested, so that
+    # we don't load the whole file into memory if not needed
+    if seq_length != -1:
+        offset = np.random.randint(max(1, len(buffer) - seq_length))
+        buffer = buffer[offset : offset + seq_length]
+
+    return buffer.astype(np.float32) / ((1 << (sample_width.value - 1)) - 1)
+
+
+def _create_resampler(
+    orig_freq: _SR,
+    new_freq: _SR,
+    lowpass_filter_width: int = 64,
+    rolloff: float = 0.9475937167399596,
+    resampling_method: str = "sinc_interp_kaiser",
+    beta: float = 14.769656459379492,
+):
+    """
+    Create a resampler with the given parameters
+    # default "kaiser_best" resampling from https://pytorch.org/audio/0.12.1/tutorials/audio_resampling_tutorial.html
+    """
+    return torchaudio.transforms.Resample(
+        orig_freq=orig_freq.value,
+        new_freq=new_freq.value,
+        lowpass_filter_width=lowpass_filter_width,
+        rolloff=rolloff,
+        resampling_method=resampling_method,
+        beta=beta,
+    ).train(False)
+
 
 class WavDataset(Dataset):
     """pytorch dataset for a collection of WAV files
@@ -71,33 +125,78 @@ class WavDataset(Dataset):
         self,
         paths: T.Iterator[Path],
         seq_length: int,
-        sample_rate: int,
+        sample_rate: _SR,
         min_duration_samples: int = 0,
-        allow_invalid_samples_as_none: bool = False
+        allow_invalid_samples_as_none: bool = False,
+        allow_resample: bool = False,
+        min_sample_rate: T.Optional[_SR] = None,
+        allowed_sample_widths: T.Optional[T.Set[_SampleWidth]] = None,
     ):
         super().__init__()
-
-        self._paths = [
-            p
-            for p in paths
-            if (p.stat().st_size // 2) > max(seq_length, min_duration_samples)
-            and librosa.get_samplerate(p) == sample_rate
-        ]
+        # These params determine the output's sample rate and sequence length
+        # When using different yet allowed sample rates, the resampler will be used to convert the audio and the sequence length will be adjusted accordingly
         self._seq_length = seq_length
         self._sample_rate = sample_rate
+
+        # Sample widths
+        if allowed_sample_widths is None:
+            allowed_sample_widths = {_SampleWidth.SW_16}
+        self._allowed_sample_widths = allowed_sample_widths
+
+        # Sample rates
+        self._allowed_sample_rates = {sample_rate}
+        if allow_resample:
+            if min_sample_rate is None or min_sample_rate >= sample_rate:
+                raise ValueError(
+                    f"min_sample_rate must be provided and less than sample_rate if upsample is allowed"
+                )
+            self._allowed_sample_rates = {
+                sr for sr in _SR if sr.value >= min_sample_rate.value
+            }
+            self._sr_to_resampler = {
+                sr: _create_resampler(orig_freq=sr, new_freq=sample_rate)
+                for sr in self._allowed_sample_rates
+            }
+
+        # Filtering out audio files that are too short or have an unsupported sample rate
+        sr_to_min_duration_samples = {
+            sr: int(min_duration_samples * sr / sample_rate)
+            for sr in self._allowed_sample_rates
+        }
+        self._paths = []
+        for p in paths:
+            sr = librosa.get_samplerate(p)
+            if sr not in self._allowed_sample_rates:
+                continue
+
+            sr_seq_length, sr_min_duration_samples = (
+                self._get_sr_adapted_seq_length(sr, self._seq_length),
+                sr_to_min_duration_samples[sr],
+            )
+            if (p.stat().st_size // 2) <= max(sr_seq_length, sr_min_duration_samples):
+                continue
+
+            self._paths.append(p)
+
         self._allow_invalid_samples_as_none = allow_invalid_samples_as_none
 
     @property
     def paths(self) -> T.List[Path]:
         return self._paths.copy()
-    
+
     @property
     def sample_rate(self) -> int:
         return self._sample_rate
-    
+
     @property
     def default_seq_length(self) -> int:
         return self._seq_length
+
+    @lru_cache(maxsize=100)
+    def _get_sr_adapted_seq_length(self, sr: _SR, seq_length: int) -> int:
+        if seq_length == -1:
+            return -1
+        return int(seq_length * sr / self._sample_rate)
 
     def __len__(self) -> int:
         return len(self._paths)
@@ -114,52 +213,32 @@ class WavDataset(Dataset):
         with self._paths[index].open("rb") as file:
             with mmap.mmap(file.fileno(), length=0, prot=mmap.PROT_READ) as data:
                 assert int.from_bytes(data[22:24], "little") == 1
-                assert int.from_bytes(data[34:36], "little") == 16
 
-                sample_rate = int.from_bytes(data[24:28], "little")
-                matching_sample_rate = sample_rate == self._sample_rate
+                sample_width = _SampleWidth(int.from_bytes(data[34:36], "little"))
+                assert sample_width in self._allowed_sample_widths
+
+                sample_rate = _SR(int.from_bytes(data[24:28], "little"))
+                matching_sample_rate = sample_rate in self._allowed_sample_rates
 
                 if not matching_sample_rate:
                     raise ValueError(
-                        f"Sample rate mismatch: {self._sample_rate} vs {sample_rate}"
+                        f"Sample rate mismatch: {self._sample_rate} vs {self._allowed_sample_rates}"
                     )
 
-                # attach the mmap'd file to a numpy buffer
-                audio = np.frombuffer(data[:], dtype=np.int16)[22:]
+                need_resample = sample_rate != self._sample_rate
 
-                # take a subsequence of the file if requested, so that
-                # we don't load the whole file into memory if not needed
-                if seq_length != -1:
-                    offset = np.random.randint(max(1, len(audio) - seq_length))
-                    audio = audio[offset : offset + seq_length]
+                sr_seq_length = self._get_sr_adapted_seq_length(sample_rate, seq_length)
+                audio = _get_seq_from_buffer(
+                    buffer=data, seq_length=sr_seq_length, sample_width=sample_width
+                )
+                if need_resample:
+                    resampler = self._sr_to_resampler[sample_rate]
+                    audio = (
+                        resampler(torch.tensor(audio).unsqueeze(0)).squeeze().numpy()
+                    )
 
                 # convert the audio from PCM-16 to float32
-                audio = audio.astype(np.float32) / 32767.0
                 return audio
-
-    def _load(self, index: int, seq_length: int = -1) -> np.ndarray:
-        # load wav using librosa
-        path = self._paths[~index]
-        duration_ms = librosa.get_duration(path=path) * 1000
-        seq_length_ms = seq_length / self._sample_rate * 1000
-
-        cut_kwargs = {}
-        if seq_length != -1:
-            offset_ms = np.random.randint(max(1, duration_ms - seq_length_ms))
-            cut_kwargs = {
-                "offset": offset_ms / 1000.0,
-                "duration": seq_length_ms / 1000.0,
-            }
-
-        audio = librosa.load(
-            self._paths[index], sr=self._sample_rate, mono=True, **cut_kwargs
-        )[0]
-
-        if len(cut_kwargs) > 0:
-            audio = audio[:seq_length]
-
-        return audio
-        
 
 
 class BWEDataset(WavDataset, ABC):
@@ -370,3 +449,23 @@ def group_by(seq: T.Iterable[A], key: T.Callable[[A], B]) -> T.Dict[B, T.List[A]
     for value in seq:
         groups[key(value)].append(value)
     return groups
+
+
+if __name__ == "__main__":
+    import os
+
+    audio_dir = "/data/projects/audio-enhancement/datasets/riverside-high-quality-vad-wavs-2/valid/vad_segments"
+    num_samples = 1000
+    audio_paths = [
+        Path(p.path) for i, p in enumerate(os.scandir(audio_dir)) if i < num_samples
+    ]
+
+    dataset = WavDataset(
+        paths=audio_paths,
+        seq_length=48000 * 1,
+        sample_rate=_SR.SR_48K,
+        allow_resample=True,
+        min_sample_rate=_SR.SR_44_1K,
+        allowed_sample_widths=set(_SampleWidth),
+    )
+    print(len(dataset))
