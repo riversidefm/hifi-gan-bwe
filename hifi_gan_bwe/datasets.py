@@ -53,6 +53,8 @@ NOISE_SNR_MAX = 60
 TRAIN_SPEAKERS = 99
 
 
+    
+
 class WavDataset(Dataset):
     """pytorch dataset for a collection of WAV files
 
@@ -88,6 +90,14 @@ class WavDataset(Dataset):
     @property
     def paths(self) -> T.List[Path]:
         return self._paths.copy()
+    
+    @property
+    def sample_rate(self) -> int:
+        return self._sample_rate
+    
+    @property
+    def default_seq_length(self) -> int:
+        return self._seq_length
 
     def __len__(self) -> int:
         return len(self._paths)
@@ -149,6 +159,7 @@ class WavDataset(Dataset):
             audio = audio[:seq_length]
 
         return audio
+        
 
 
 class BWEDataset(WavDataset, ABC):
