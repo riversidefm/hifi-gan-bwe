@@ -181,6 +181,7 @@ class WavDataset(Dataset):
 
             self._paths.append(p)
 
+        print(f"Loaded {len(self._paths)} audio files from {len(paths)}")
         self._allow_invalid_samples_as_none = allow_invalid_samples_as_none
 
     @property
