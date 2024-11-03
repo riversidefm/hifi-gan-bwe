@@ -22,19 +22,16 @@ from pathlib import Path
 import git
 import numpy as np
 import torch
-from hifi_gan_bwe_common.hifi_gan_bwe.dataset_converters import (
-    bwe_dataset_from_riverside_audio_dataset,
-)
 import torchaudio
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from hifi_gan_bwe import criteria, datasets, metrics, models
 from hifi_gan_bwe.datasets import BWEDataset, WavDataset
-from riverside_datasets.audio.riverside_audio_dataset_with_db import RiversideAudioDatasetFromDBFactory
+from riverside_datasets.audio.riverside_audio_dataset_with_db import RiversideAudioDatasetWithDBFactory
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
 WARMUP_ITERATIONS = 100000
-JOINT_ITERATIONS = 100000
+JOINT_ITERATIONS = 800000
 
 
 class DatasetType(str, Enum):
@@ -61,14 +58,10 @@ def load_dataset(
             path, training=is_training, eval_set_seq_length=eval_set_seq_length
         )
     elif dataset_type == DatasetType.RIVERSIDE:
-        riverside_dataset = RiversideAudioDatasetFromDBFactory.from_directory_and_mongo(
+        return RiversideAudioDatasetWithDBFactory.from_directory_and_mongo(
             path=path,
             seq_length_sec=seq_length_sec,
             **riverside_dataset_kwargs,
-        )
-        
-        return bwe_dataset_from_riverside_audio_dataset(
-            riverside_dataset, eval_set_seq_length=eval_set_seq_length
         )
     else:
         raise ValueError("Invalid dataset type")
@@ -87,7 +80,7 @@ def load_datasets(
         if valid_type == DatasetType.VCTK:
             valid_path = train_path
         elif valid_type == DatasetType.RIVERSIDE:
-            valid_path = train_path.parent / DatasetSplit.VALIDATION.value
+            valid_path = train_path
         else:
             raise ValueError("Invalid dataset type")
 
@@ -104,7 +97,7 @@ def load_datasets(
         dataset_split=DatasetSplit.VALIDATION,
         path=valid_path,
         seq_length_sec=valid_set_seq_length_sec,
-        **riverside_dataset_kwargs,
+        # **riverside_dataset_kwargs,  # We should use VCTK for validation so this should be uncommented for good reasons only
     )
 
     return train_set, valid_set
@@ -397,7 +390,7 @@ class Trainer(torch.nn.Module):
 def main() -> None:
     parser = argparse.ArgumentParser("HiFi-GAN+ Bandwidth Extension Trainer")
     parser.add_argument(
-        "--name",
+        "name",
         help="training run name",
     )
     parser.add_argument(

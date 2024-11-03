@@ -39,6 +39,7 @@ import torch
 from torch.utils.data import Dataset
 import librosa
 import torchaudio
+from tqdm import tqdm
 
 A = T.TypeVar("A")
 B = T.TypeVar("B")
@@ -164,7 +165,7 @@ class WavDataset(Dataset):
             for sr in self._allowed_sample_rates
         }
         self._paths = []
-        for p in paths:
+        for p in tqdm(paths, desc=f"Loading audio files for {self.__class__.__name__}"):
             try:
                 sr = librosa.get_samplerate(p)
             except Exception:
@@ -272,7 +273,7 @@ class VCTKDataset(BWEDataset):
         paths = sorted((Path(path) / "wav48").glob("*"))
         paths = paths[:TRAIN_SPEAKERS] if training else paths[TRAIN_SPEAKERS:]
         super().__init__(
-            paths=(p for s in paths for p in s.glob("*.wav")),
+            paths=[p for s in paths for p in s.glob("*.wav")],
             seq_length=SEQ_LENGTH,
             eval_set_seq_length=eval_set_seq_length,
             sample_rate=SAMPLE_RATE,

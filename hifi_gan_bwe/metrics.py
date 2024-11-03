@@ -8,6 +8,7 @@ they are reset, similar to tf.keras.metrics.
 
 """
 
+import io
 import typing as T
 from abc import abstractmethod
 
@@ -15,6 +16,7 @@ import numpy as np
 import torch
 import wandb
 from matplotlib import pyplot as plt
+from PIL import Image as PILImage
 
 
 class Summary:
@@ -74,8 +76,12 @@ class Summary:
             name: name of the metric to record
 
         """
-
-        wandb.log({name: wandb.Image(figure)}, step=iterations)
+        buffer = io.BytesIO()
+        figure.tight_layout()
+        figure.savefig(buffer, format="jpg", dpi=50)
+        buffer.seek(0)
+        image = PILImage.open(buffer)
+        wandb.log({name: wandb.Image(image, file_type="jpg")}, step=iterations)
         plt.close(figure)
 
     def audio(
