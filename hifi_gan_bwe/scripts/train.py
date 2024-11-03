@@ -17,6 +17,8 @@ experiment tracking site.
 
 import argparse
 from enum import Enum
+import os
+import multiprocessing
 import typing as T
 from pathlib import Path
 import git
@@ -125,6 +127,7 @@ class Trainer(torch.nn.Module):
             batch_size=datasets.BATCH_SIZE,
             shuffle=True,
             drop_last=True,
+            num_workers=os.cpu_count(),
         )
         self.valid_loader = torch.utils.data.DataLoader(
             self.valid_set,
@@ -132,6 +135,7 @@ class Trainer(torch.nn.Module):
             batch_size=datasets.BATCH_SIZE,
             shuffle=False,
             drop_last=True,
+            num_workers=os.cpu_count(),
         )
 
         # create the generator and discriminator models
@@ -472,6 +476,7 @@ def main() -> None:
         "min_sample_rate": 44100,  # Unlikely to change
     }
 
+    multiprocessing.set_start_method('spawn')
     train_set, valid_set = load_datasets(
         train_path=args.train_dataset_path,
         train_type=args.train_dataset_type,
