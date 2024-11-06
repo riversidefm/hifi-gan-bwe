@@ -27,9 +27,10 @@ import torch
 import torchaudio
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from ai_resources.objects.audio.units import ms_to_sec
 from hifi_gan_bwe import criteria, datasets, metrics, models
 from hifi_gan_bwe.datasets import BWEDataset, WavDataset
-from riverside_datasets.audio.riverside_audio_dataset_with_db import RiversideAudioDatasetWithDBFactory
+from riverside_datasets.audio.riverside_audio_dataset_with_db import RiversideAudioDatasetWithDB, RiversideAudioDatasetWithDBFactory
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
 WARMUP_ITERATIONS = 100000
@@ -109,18 +110,22 @@ class Trainer(torch.nn.Module):
     def __init__(
         self,
         args: argparse.Namespace,
-        train_set: WavDataset,
-        valid_set: WavDataset,
+        train_set: RiversideAudioDatasetWithDB,
+        valid_set: RiversideAudioDatasetWithDB,
     ) -> None:
         super().__init__()
 
         # load training, validation, and noise datasets
         self.train_set = train_set
         self.valid_set = valid_set
-        noise_set = datasets.DNSDataset(
-            args.noise_path,
-            seq_length_sec=datasets.BATCH_SIZE * datasets.SEQ_LENGTH_SEC,
+        noise_set = RiversideAudioDatasetWithDBFactory.from_directory_and_mongo(
+            path=Path("/data/projects/audio-enhancement/datasets/DNS-Challenge/datasets_fullband/noise_fullband"),
+            db_name="audio",
+            collection_name="dns-noise",
+            seq_length_sec=ms_to_sec(train_set.seq_length_ms),
+            use_vad_intervals=False,
         )
+        
         self.train_loader = torch.utils.data.DataLoader(
             self.train_set,
             collate_fn=datasets.Preprocessor(noise_set=noise_set, training=True),
