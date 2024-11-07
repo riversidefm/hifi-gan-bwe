@@ -467,6 +467,12 @@ def main() -> None:
         default=0,
         help="probability of samples containing partial or full silence",
     )
+    parser.add_argument(
+        "--seed",
+        type=float,
+        default=42,
+        help="probability of samples containing partial or full silence",
+    )
     args = parser.parse_args()
 
     if git.Repo().is_dirty():
@@ -480,7 +486,8 @@ def main() -> None:
         "use_vad_intervals": args.use_vad_intervals,
         "min_sample_rate": 44100,  # Unlikely to change
     }
-
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     multiprocessing.set_start_method('spawn')
     train_set, valid_set = load_datasets(
         train_path=args.train_dataset_path,

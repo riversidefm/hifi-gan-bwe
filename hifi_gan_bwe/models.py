@@ -107,7 +107,7 @@ class BandwidthExtender(torch.nn.Module):
             x,
             sample_rate,
             self.sample_rate,
-            resampling_method="kaiser_window",
+            resampling_method="sinc_interp_kaiser",
             lowpass_filter_width=16,
             rolloff=0.945,
             beta=14.769656459379492,
