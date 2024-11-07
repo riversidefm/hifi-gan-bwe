@@ -30,7 +30,7 @@ from tqdm import tqdm
 from ai_resources.objects.audio.units import ms_to_sec
 from hifi_gan_bwe import criteria, datasets, metrics, models
 from hifi_gan_bwe.datasets import BWEDataset, WavDataset
-from riverside_datasets.audio.riverside_audio_dataset_with_db import RiversideAudioDatasetWithDB, RiversideAudioDatasetWithDBFactory
+from riverside_datasets.audio.riverside_audio_dataset import RiversideAudioDataset, RiversideAudioDatasetFactory
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
 WARMUP_ITERATIONS = 100000
@@ -61,8 +61,8 @@ def load_dataset(
             path, training=is_training, eval_set_seq_length=eval_set_seq_length
         )
     elif dataset_type == DatasetType.RIVERSIDE:
-        return RiversideAudioDatasetWithDBFactory.from_directory_and_mongo(
-            path=path,
+        return RiversideAudioDatasetFactory.from_directory_and_mongo(
+            dirpath=path,
             seq_length_sec=seq_length_sec,
             **riverside_dataset_kwargs,
         )
@@ -78,7 +78,7 @@ def load_datasets(
     train_set_seq_length_sec: float,
     valid_set_seq_length_sec: float,
     **riverside_dataset_kwargs,
-) -> T.Tuple[WavDataset, WavDataset]:
+) -> T.Tuple[RiversideAudioDataset, RiversideAudioDataset]:
     if valid_path is None:
         if valid_type == DatasetType.VCTK:
             valid_path = train_path
@@ -110,16 +110,16 @@ class Trainer(torch.nn.Module):
     def __init__(
         self,
         args: argparse.Namespace,
-        train_set: RiversideAudioDatasetWithDB,
-        valid_set: RiversideAudioDatasetWithDB,
+        train_set: RiversideAudioDataset,
+        valid_set: RiversideAudioDataset,
     ) -> None:
         super().__init__()
 
         # load training, validation, and noise datasets
         self.train_set = train_set
         self.valid_set = valid_set
-        noise_set = RiversideAudioDatasetWithDBFactory.from_directory_and_mongo(
-            path=Path("/data/projects/audio-enhancement/datasets/DNS-Challenge/datasets_fullband/noise_fullband"),
+        noise_set = RiversideAudioDatasetFactory.from_directory_and_mongo(
+            dirpath="/data/projects/audio-enhancement/datasets/DNS-Challenge/datasets_fullband/noise_fullband",
             db_name="audio",
             collection_name="dns-noise",
             seq_length_sec=ms_to_sec(train_set.seq_length_ms),
