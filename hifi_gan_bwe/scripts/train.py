@@ -29,12 +29,12 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 from ai_resources.objects.audio.units import ms_to_sec
 from hifi_gan_bwe import criteria, datasets, metrics, models
-from hifi_gan_bwe.datasets import BWEDataset, WavDataset
+from hifi_gan_bwe.datasets import BWEDataset
 from riverside_datasets.audio.riverside_audio_dataset import RiversideAudioDataset, RiversideAudioDatasetFactory
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
-WARMUP_ITERATIONS = 100000
-JOINT_ITERATIONS = 800000
+WARMUP_ITERATIONS =  100000
+JOINT_ITERATIONS = 900000
 
 
 class DatasetType(str, Enum):

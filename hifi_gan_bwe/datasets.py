@@ -352,7 +352,7 @@ class Preprocessor:
         y = orig_y.to(self._device)
 
         # only augment during training
-        if self._training:
+        if self._training and np.random.rand() < 0.5:
             y = self._augment(y)
             if return_only_noisy_audio:
                 return y
