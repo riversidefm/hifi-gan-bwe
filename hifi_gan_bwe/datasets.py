@@ -317,7 +317,7 @@ class Preprocessor:
 
     def __init__(
         self,
-        noise_set: WavDataset,
+        noise_set: Dataset,
         training: bool,
         device: str = "cuda",
         target_sample_rate: int = SAMPLE_RATE,
@@ -329,6 +329,7 @@ class Preprocessor:
         noise_snr_max: float = NOISE_SNR_MAX,
         perform_amplitude_augmentation: bool = True,
     ):
+        assert hasattr(self._noise_set, "sample_rate"), "Noise dataset must have sample_rate attribute"
         self._device = device
         self._training = training
         self._noise_set = noise_set
@@ -390,7 +391,7 @@ class Preprocessor:
                 np.resize(
                     librosa.resample(
                         self._noise_set[noise_index],
-                        orig_sr=self._noise_set._sample_rate,
+                        orig_sr=self._noise_set.sample_rate,
                         target_sr=self._target_sample_rate,
                         axis=-1,
                     ),
@@ -403,7 +404,7 @@ class Preprocessor:
             noise = np.resize(
                 librosa.resample(
                     self._noise_set[noise_index],
-                    orig_sr=self._noise_set._sample_rate,
+                    orig_sr=self._noise_set.sample_rate,
                     target_sr=self._target_sample_rate,
                     axis=-1,
                 ),
