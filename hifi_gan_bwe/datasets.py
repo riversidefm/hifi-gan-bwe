@@ -329,7 +329,7 @@ class Preprocessor:
         noise_snr_max: float = NOISE_SNR_MAX,
         perform_amplitude_augmentation: bool = True,
     ):
-        assert hasattr(self._noise_set, "sample_rate"), "Noise dataset must have sample_rate attribute"
+        assert hasattr(noise_set, "sample_rate"), "Noise dataset must have sample_rate attribute"
         self._device = device
         self._training = training
         self._noise_set = noise_set
