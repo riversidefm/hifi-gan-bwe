@@ -33,7 +33,7 @@ import torch
 import torchaudio
 from tqdm import tqdm
 
-from hifi_gan_bwe.datasets import SAMPLE_RATE
+from .datasets import SAMPLE_RATE
 
 CDN_URL = "https://cdn.brentspell.com/models/hifi-gan-bwe"
 
@@ -81,9 +81,15 @@ class BandwidthExtender(torch.nn.Module):
         ckpt_paths = sorted(Path(log_path).glob(f"ckpt-{checkpoint or '*'}k.pt"))
         if not ckpt_paths:
             raise Exception("checkpoint not found")
-        state = torch.load(ckpt_paths[-1])
-
-        # create the model and load its weights from the checkpoint
+        path = ckpt_paths[-1]
+        model = BandwidthExtender.from_file(path)
+        return model
+    
+    @staticmethod
+    def from_file(
+        path: str
+    ):
+        state = torch.load(path)
         model = BandwidthExtender()
         model.apply_weightnorm()
         model.load_state_dict(state["gen_model"])
@@ -101,7 +107,7 @@ class BandwidthExtender(torch.nn.Module):
             x,
             sample_rate,
             self.sample_rate,
-            resampling_method="kaiser_window",
+            resampling_method="sinc_interp_kaiser",
             lowpass_filter_width=16,
             rolloff=0.945,
             beta=14.769656459379492,

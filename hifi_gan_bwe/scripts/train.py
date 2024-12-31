@@ -17,27 +17,24 @@ experiment tracking site.
 
 import argparse
 from enum import Enum
+import os
+import multiprocessing
 import typing as T
 from pathlib import Path
 import git
 import numpy as np
 import torch
-from hifi_gan_bwe_common.hifi_gan_bwe.dataset_converters import (
-    bwe_dataset_from_riverside_audio_dataset,
-)
 import torchaudio
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from ai_resources.objects.audio.units import ms_to_sec
 from hifi_gan_bwe import criteria, datasets, metrics, models
-from riverside_datasets.audio.riverside_audio_dataset import (
-    RiversideAudioDatasetFactory,
-)
-
-from hifi_gan_bwe.datasets import BWEDataset, WavDataset
+from hifi_gan_bwe.datasets import BWEDataset
+from riverside_datasets.audio.riverside_audio_dataset import RiversideAudioDataset, RiversideAudioDatasetFactory
 
 SAMPLE_RATE = datasets.SAMPLE_RATE
-WARMUP_ITERATIONS = 100000
-JOINT_ITERATIONS = 100000
+WARMUP_ITERATIONS =  100000
+JOINT_ITERATIONS = 900000
 
 
 class DatasetType(str, Enum):
@@ -56,7 +53,7 @@ def load_dataset(
     path: Path,
     seq_length_sec: float,
     eval_set_seq_length: float = -1,
-    
+    **riverside_dataset_kwargs,
 ) -> BWEDataset:
     if dataset_type == DatasetType.VCTK:
         is_training = dataset_split == DatasetSplit.TRAINING
@@ -64,12 +61,10 @@ def load_dataset(
             path, training=is_training, eval_set_seq_length=eval_set_seq_length
         )
     elif dataset_type == DatasetType.RIVERSIDE:
-        riverside_dataset = RiversideAudioDatasetFactory.from_directories(
-            manifest_path=path,
+        return RiversideAudioDatasetFactory.from_directory_and_mongo(
+            dirpath=path,
             seq_length_sec=seq_length_sec,
-        )
-        return bwe_dataset_from_riverside_audio_dataset(
-            riverside_dataset, eval_set_seq_length=eval_set_seq_length
+            **riverside_dataset_kwargs,
         )
     else:
         raise ValueError("Invalid dataset type")
@@ -82,12 +77,13 @@ def load_datasets(
     valid_type: DatasetType,
     train_set_seq_length_sec: float,
     valid_set_seq_length_sec: float,
-) -> T.Tuple[WavDataset, WavDataset]:
+    **riverside_dataset_kwargs,
+) -> T.Tuple[RiversideAudioDataset, RiversideAudioDataset]:
     if valid_path is None:
         if valid_type == DatasetType.VCTK:
             valid_path = train_path
         elif valid_type == DatasetType.RIVERSIDE:
-            valid_path = train_path.parent / DatasetSplit.VALIDATION.value
+            valid_path = train_path
         else:
             raise ValueError("Invalid dataset type")
 
@@ -96,6 +92,7 @@ def load_datasets(
         dataset_split=DatasetSplit.TRAINING,
         path=train_path,
         seq_length_sec=train_set_seq_length_sec,
+        **riverside_dataset_kwargs,
     )
 
     valid_set = load_dataset(
@@ -103,6 +100,7 @@ def load_datasets(
         dataset_split=DatasetSplit.VALIDATION,
         path=valid_path,
         seq_length_sec=valid_set_seq_length_sec,
+        # **riverside_dataset_kwargs,  # We should use VCTK for validation so this should be uncommented for good reasons only
     )
 
     return train_set, valid_set
@@ -112,24 +110,29 @@ class Trainer(torch.nn.Module):
     def __init__(
         self,
         args: argparse.Namespace,
-        train_set: WavDataset,
-        valid_set: WavDataset,
+        train_set: RiversideAudioDataset,
+        valid_set: RiversideAudioDataset,
     ) -> None:
         super().__init__()
 
         # load training, validation, and noise datasets
         self.train_set = train_set
         self.valid_set = valid_set
-        noise_set = datasets.DNSDataset(
-            args.noise_path,
-            seq_length_sec=datasets.BATCH_SIZE * datasets.SEQ_LENGTH_SEC,
+        noise_set = RiversideAudioDatasetFactory.from_directory_and_mongo(
+            dirpath="/data/projects/audio-enhancement/datasets/DNS-Challenge/datasets_fullband/noise_fullband",
+            db_name="audio",
+            collection_name="dns-noise",
+            seq_length_sec=ms_to_sec(train_set.seq_length_ms),
+            use_vad_intervals=False,
         )
+        
         self.train_loader = torch.utils.data.DataLoader(
             self.train_set,
             collate_fn=datasets.Preprocessor(noise_set=noise_set, training=True),
             batch_size=datasets.BATCH_SIZE,
             shuffle=True,
             drop_last=True,
+            num_workers=os.cpu_count(),
         )
         self.valid_loader = torch.utils.data.DataLoader(
             self.valid_set,
@@ -137,6 +140,7 @@ class Trainer(torch.nn.Module):
             batch_size=datasets.BATCH_SIZE,
             shuffle=False,
             drop_last=True,
+            num_workers=os.cpu_count(),
         )
 
         # create the generator and discriminator models
@@ -401,7 +405,7 @@ def main() -> None:
     parser.add_argument(
         "--train_dataset_path",
         type=Path,
-        default="/data/projects/audio-enhancement/datasets/riverside-high-quality-vad-segments/train/manifest.json",
+        default="/data/projects/audio-enhancement/datasets/riverside-high-quality/",
         help="path to the speech dataset",
     )
     parser.add_argument(
@@ -439,13 +443,52 @@ def main() -> None:
         action="store_true",
         help="pass to disable Weights and Biases (wandb.ai) logging",
     )
+    parser.add_argument(
+        "--db_name",
+        type=str,
+        default="audio",
+        help="name of the MongoDB database",
+    )
+    parser.add_argument(
+        "--collection_name",
+        type=str,
+        default="riverside-high-quality",
+        help="name of the MongoDB collection",
+    )
+    parser.add_argument(
+        "--use_vad_intervals",
+        action="store_true",
+        default=True,
+        help="use vad intervals to load audio samples",
+    )
+    parser.add_argument(
+        "--silence_prob",
+        type=float,
+        default=0,
+        help="probability of samples containing partial or full silence",
+    )
+    parser.add_argument(
+        "--seed",
+        type=float,
+        default=42,
+        help="probability of samples containing partial or full silence",
+    )
     args = parser.parse_args()
 
     if git.Repo().is_dirty():
         print("warning: local git repo is dirty")
 
     # load datasets
-
+    riverside_dataset_kwargs = {
+        "db_name": args.db_name,
+        "collection_name": args.collection_name,
+        "silence_prob": args.silence_prob,
+        "use_vad_intervals": args.use_vad_intervals,
+        "min_sample_rate": 44100,  # Unlikely to change
+    }
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    multiprocessing.set_start_method('spawn')
     train_set, valid_set = load_datasets(
         train_path=args.train_dataset_path,
         train_type=args.train_dataset_type,
@@ -453,6 +496,7 @@ def main() -> None:
         valid_type=args.validation_dataset_type,
         train_set_seq_length_sec=datasets.SEQ_LENGTH_SEC,
         valid_set_seq_length_sec=datasets.SEQ_LENGTH_SEC,
+        **riverside_dataset_kwargs,
     )
 
     # create the model trainer and load the latest checkpoint

@@ -39,6 +39,7 @@ import torch
 from torch.utils.data import Dataset
 import librosa
 import torchaudio
+from tqdm import tqdm
 
 A = T.TypeVar("A")
 B = T.TypeVar("B")
@@ -164,7 +165,7 @@ class WavDataset(Dataset):
             for sr in self._allowed_sample_rates
         }
         self._paths = []
-        for p in paths:
+        for p in tqdm(paths, desc=f"Loading audio files for {self.__class__.__name__}"):
             try:
                 sr = librosa.get_samplerate(p)
             except Exception:
@@ -272,7 +273,7 @@ class VCTKDataset(BWEDataset):
         paths = sorted((Path(path) / "wav48").glob("*"))
         paths = paths[:TRAIN_SPEAKERS] if training else paths[TRAIN_SPEAKERS:]
         super().__init__(
-            paths=(p for s in paths for p in s.glob("*.wav")),
+            paths=[p for s in paths for p in s.glob("*.wav")],
             seq_length=SEQ_LENGTH,
             eval_set_seq_length=eval_set_seq_length,
             sample_rate=SAMPLE_RATE,
@@ -316,7 +317,7 @@ class Preprocessor:
 
     def __init__(
         self,
-        noise_set: WavDataset,
+        noise_set: Dataset,
         training: bool,
         device: str = "cuda",
         target_sample_rate: int = SAMPLE_RATE,
@@ -327,7 +328,9 @@ class Preprocessor:
         noise_snr_min: float = NOISE_SNR_MIN,
         noise_snr_max: float = NOISE_SNR_MAX,
         perform_amplitude_augmentation: bool = True,
+        random_augmentation_prob: T.Optional[float] = None,
     ):
+        assert hasattr(noise_set, "sample_rate"), "Noise dataset must have sample_rate attribute"
         self._device = device
         self._training = training
         self._noise_set = noise_set
@@ -339,6 +342,7 @@ class Preprocessor:
         self._noise_snr_min = noise_snr_min
         self._noise_snr_max = noise_snr_max
         self._perform_amplitude_augmentation = perform_amplitude_augmentation
+        self._random_augmentation_prob = random_augmentation_prob
 
     def __call__(
         self,
@@ -352,7 +356,11 @@ class Preprocessor:
 
         # only augment during training
         if self._training:
-            y = self._augment(y)
+            if self._random_augmentation_prob is not None and return_only_noisy_audio:
+                raise ValueError("Can't return only noisy audio when random augmentation is enabled")
+            can_augment = self._random_augmentation_prob is None or (np.random.rand() < self._random_augmentation_prob)
+            if can_augment:
+                y = self._augment(y)
             if return_only_noisy_audio:
                 return y
         r = np.random.choice(RESAMPLE_RATES)
@@ -389,7 +397,7 @@ class Preprocessor:
                 np.resize(
                     librosa.resample(
                         self._noise_set[noise_index],
-                        orig_sr=self._noise_set._sample_rate,
+                        orig_sr=self._noise_set.sample_rate,
                         target_sr=self._target_sample_rate,
                         axis=-1,
                     ),
@@ -402,7 +410,7 @@ class Preprocessor:
             noise = np.resize(
                 librosa.resample(
                     self._noise_set[noise_index],
-                    orig_sr=self._noise_set._sample_rate,
+                    orig_sr=self._noise_set.sample_rate,
                     target_sr=self._target_sample_rate,
                     axis=-1,
                 ),

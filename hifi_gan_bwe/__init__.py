@@ -1,5 +1,5 @@
 """ library default root exports """
 
-from hifi_gan_bwe.models import BandwidthExtender
+from .models import BandwidthExtender
 
 __all__ = ["BandwidthExtender"]
