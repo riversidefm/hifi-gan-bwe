@@ -328,6 +328,7 @@ class Preprocessor:
         noise_snr_min: float = NOISE_SNR_MIN,
         noise_snr_max: float = NOISE_SNR_MAX,
         perform_amplitude_augmentation: bool = True,
+        random_augmentation_prob: T.Optional[float] = None,
     ):
         assert hasattr(noise_set, "sample_rate"), "Noise dataset must have sample_rate attribute"
         self._device = device
@@ -341,6 +342,7 @@ class Preprocessor:
         self._noise_snr_min = noise_snr_min
         self._noise_snr_max = noise_snr_max
         self._perform_amplitude_augmentation = perform_amplitude_augmentation
+        self._random_augmentation_prob = random_augmentation_prob
 
     def __call__(
         self,
@@ -353,8 +355,12 @@ class Preprocessor:
         y = orig_y.to(self._device)
 
         # only augment during training
-        if self._training and np.random.rand() < 0.5:
-            y = self._augment(y)
+        if self._training:
+            if self._random_augmentation_prob is not None and return_only_noisy_audio:
+                raise ValueError("Can't return only noisy audio when random augmentation is enabled")
+            can_augment = self._random_augmentation_prob is None or (np.random.rand() < self._random_augmentation_prob)
+            if can_augment:
+                y = self._augment(y)
             if return_only_noisy_audio:
                 return y
         r = np.random.choice(RESAMPLE_RATES)
