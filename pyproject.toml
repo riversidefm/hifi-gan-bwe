@@ -10,10 +10,10 @@ python = "^3.9"
 torch = "^2.3.0"
 torchaudio = "^2.3.0"
 matplotlib = "^3.8.4"
-tqdm = "^4.66.4"
+tqdm = "^4.67.3"
 python-git = "^2018.2.1"
-gitpython = "^3.1.43"
-requests = "^2.31.0"
+gitpython = "^3.1.46"
+requests = "^2.32.4"
 wandb = "^0.17.0"
 s5cmd-facade-python = {git = "ssh://git@github.com/riversidefm/s5cmd-facade-python.git", tag="v2.0.2"}
 
